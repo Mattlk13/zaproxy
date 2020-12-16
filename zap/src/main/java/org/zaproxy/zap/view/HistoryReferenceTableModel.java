@@ -23,7 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.swing.ImageIcon;
 import javax.swing.table.AbstractTableModel;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.core.scanner.Alert;
 import org.parosproxy.paros.model.HistoryReference;
@@ -40,7 +41,7 @@ public class HistoryReferenceTableModel extends AbstractTableModel {
     /** The Constant serialVersionUID. */
     private static final long serialVersionUID = 1L;
 
-    private static final Logger logger = Logger.getLogger(HistoryReferenceTableModel.class);
+    private static final Logger logger = LogManager.getLogger(HistoryReferenceTableModel.class);
 
     /** The full set of allowed columns * */
     public static final int COLUMN_ = 0;
@@ -90,7 +91,7 @@ public class HistoryReferenceTableModel extends AbstractTableModel {
         this.hrefList = new ArrayList<>();
     }
 
-    /** This should be overriden for any custom columns */
+    /** This should be overridden for any custom columns */
     @Override
     public String getColumnName(int column) {
         return COLUMN_NAMES[this.columns[column].ordinal()];
@@ -110,7 +111,7 @@ public class HistoryReferenceTableModel extends AbstractTableModel {
         return hrefList.size();
     }
 
-    /** This should be overriden for any custom columns */
+    /** This should be overridden for any custom columns */
     @Override
     public Object getValueAt(int row, int col) {
         // Get the href and the required field
@@ -230,7 +231,7 @@ public class HistoryReferenceTableModel extends AbstractTableModel {
     }
 
     /**
-     * Returns the type of column for given column index. This should be overriden for any custom
+     * Returns the type of column for given column index. This should be overridden for any custom
      * columns
      *
      * @param columnIndex the column index

@@ -20,8 +20,6 @@
 package org.zaproxy.zap.extension.params;
 
 import java.awt.EventQueue;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -33,7 +31,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import javax.swing.tree.TreeNode;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.control.Control.Mode;
@@ -74,7 +73,7 @@ public class ExtensionParams extends ExtensionAdaptor
     private PopupMenuRemoveSession popupMenuRemoveSession = null;
     private Map<String, SiteParameters> siteParamsMap = new HashMap<>();
 
-    private Logger logger = Logger.getLogger(ExtensionParams.class);
+    private Logger logger = LogManager.getLogger(ExtensionParams.class);
 
     private ExtensionHttpSessions extensionHttpSessions;
     private ParamScanner paramScanner;
@@ -638,15 +637,6 @@ public class ExtensionParams extends ExtensionAdaptor
     @Override
     public String getDescription() {
         return Constant.messages.getString("params.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     @Override

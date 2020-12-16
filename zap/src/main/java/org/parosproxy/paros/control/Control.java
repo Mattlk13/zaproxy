@@ -40,7 +40,7 @@
 // ZAP: 2013/03/03 Issue 546: Remove all template Javadoc comments
 // ZAP: 2013/03/20 Issue 568: Allow extensions to run from the command line
 // ZAP: 2013/04/16 Issue 638: Persist and snapshot sessions instead of saving them
-// ZAP: 2013/08/28 Issue 695: Sites tree doesnt clear on new session created by API
+// ZAP: 2013/08/28 Issue 695: Sites tree doesn't clear on new session created by API
 // ZAP: 2013/08/29 Issue 776: Allow add-ons to warn user if they're closing ZAP with unsaved
 // resources open
 // ZAP: 2013/09/16 Issue 791: Saved sessions are discarded on ZAP's exit
@@ -77,18 +77,27 @@
 // ZAP: 2019/03/14 Improve error handling on shutdown
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2019/09/30 Reduce View singleton usage and replace null checks with hasView().
+// ZAP: 2019/12/16 Log path of new session.
+// ZAP: 2019/12/13 Enable prompting/suggesting a new port when there's a proxy port conflict (Issue
+// 2016).
+// ZAP: 2020/11/23 Allow to initialise the singleton with an ExtensionLoader for tests.
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.control;
 
 import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.List;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import org.apache.commons.configuration.ConfigurationException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.db.DatabaseException;
+import org.parosproxy.paros.extension.ExtensionLoader;
 import org.parosproxy.paros.model.Model;
 import org.parosproxy.paros.model.Session;
 import org.parosproxy.paros.model.SessionListener;
@@ -107,7 +116,7 @@ public class Control extends AbstractControl implements SessionListener {
         attack
     };
 
-    private static Logger log = Logger.getLogger(Control.class);
+    private static Logger log = LogManager.getLogger(Control.class);
 
     private static Control control = null;
     private Proxy proxy = null;
@@ -139,7 +148,7 @@ public class Control extends AbstractControl implements SessionListener {
         getExtensionLoader().hookPersistentConnectionListener(proxy);
         getExtensionLoader().hookConnectRequestProxyListeners(proxy);
 
-        if (view != null) {
+        if (hasView()) {
             // ZAP: Add site map listeners
             getExtensionLoader().hookSiteMapListener(view.getSiteTreePanel());
         }
@@ -147,9 +156,16 @@ public class Control extends AbstractControl implements SessionListener {
         model.postInit();
 
         if (startProxy) {
-            return proxy.startServer();
+            proxy.setShouldPrompt(true);
+            boolean started = proxy.startServer();
+            proxy.setShouldPrompt(false);
+            return started;
         }
         return false;
+    }
+
+    private boolean hasView() {
+        return view != null;
     }
 
     public Proxy getProxy() {
@@ -188,7 +204,7 @@ public class Control extends AbstractControl implements SessionListener {
     @Override
     public void shutdown(boolean compact) {
         try {
-            if (view != null) {
+            if (hasView()) {
                 view.getRequestPanel().saveConfig(model.getOptionsParam().getConfig());
                 view.getResponsePanel().saveConfig(model.getOptionsParam().getConfig());
             }
@@ -219,7 +235,7 @@ public class Control extends AbstractControl implements SessionListener {
                             .getChildCount(model.getSession().getSiteTree().getRoot());
         }
         boolean askOnExit =
-                view != null
+                hasView()
                         && Model.getSingleton()
                                         .getOptionsParam()
                                         .getViewParam()
@@ -302,7 +318,7 @@ public class Control extends AbstractControl implements SessionListener {
                         },
                         "ZAP-Shutdown");
 
-        if (view != null) {
+        if (hasView()) {
             WaitMessageDialog dialog =
                     view.getWaitMessageDialog(
                             Constant.messages.getString("menu.file.shuttingDown")); // ZAP: i18n
@@ -365,6 +381,19 @@ public class Control extends AbstractControl implements SessionListener {
         control = new Control(model, null);
     }
 
+    /**
+     * Initialises the {@code Control} singleton with the given data.
+     *
+     * <p><strong>Note:</strong> Not part of the public API.
+     *
+     * @param model the {@code Model} to test with.
+     * @param extensionLoader the {@code ExtensionLoader} to test with.
+     */
+    public static void initSingletonForTesting(Model model, ExtensionLoader extensionLoader) {
+        initSingletonForTesting(model);
+        control.loader = extensionLoader;
+    }
+
     public void runCommandLine() throws Exception {
         log.debug("runCommand");
         getExtensionLoader().runCommandLine();
@@ -378,7 +407,7 @@ public class Control extends AbstractControl implements SessionListener {
         final Session session = createNewSession();
         model.saveSession(fileName);
 
-        if (View.isInitialised()) {
+        if (hasView()) {
             SwingUtilities.invokeLater(
                     new Runnable() {
 
@@ -392,7 +421,7 @@ public class Control extends AbstractControl implements SessionListener {
                     });
         }
 
-        log.info("New session file created");
+        log.info("New session file created: " + Paths.get(fileName).toRealPath());
         control.getExtensionLoader().databaseOpen(model.getDb());
         control.getExtensionLoader().sessionChangedAllPlugin(session);
     }
@@ -448,7 +477,7 @@ public class Control extends AbstractControl implements SessionListener {
         getExtensionLoader().databaseOpen(model.getDb());
         getExtensionLoader().sessionChangedAllPlugin(session);
 
-        if (View.isInitialised()) {
+        if (hasView()) {
             SwingUtilities.invokeLater(
                     new Runnable() {
                         @Override

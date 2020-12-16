@@ -19,50 +19,71 @@
  */
 package org.parosproxy.paros;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.Matchers.isEmptyString;
+import static org.hamcrest.Matchers.not;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
+import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.io.IOUtils;
-import org.junit.Before;
-import org.junit.ClassRule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.hamcrest.Matcher;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.zaproxy.zap.utils.ZapXmlConfiguration;
 
 /** Unit test for {@link Constant}. */
 public class ConstantUnitTest {
 
-    @ClassRule public static TemporaryFolder tempDir = new TemporaryFolder();
+    @TempDir static Path tempDir;
     private Path zapInstallDir;
     private Path zapHomeDir;
 
-    @Before
+    @BeforeEach
     public void before() throws Exception {
-        Path parentDir = tempDir.newFolder().toPath();
+        Path parentDir = Files.createTempDirectory(tempDir, "zap-");
         zapInstallDir = Files.createDirectories(parentDir.resolve("install"));
         zapHomeDir = Files.createDirectories(parentDir.resolve("home"));
+    }
+
+    @AfterEach
+    void after() throws Exception {
+        Configurator.reconfigure(
+                ConstantUnitTest.class.getResource("/log4j2-test.properties").toURI());
     }
 
     @Test
     public void shouldInitialiseHomeDirFromInstallDir() throws IOException {
         // Given
-        String configContents = "<config><version>0</version></config>";
+        String configContents =
+                String.format(
+                        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>%n"
+                                + "<config>%n"
+                                + "    <version>%s</version>%n"
+                                + "</config>%n",
+                        Constant.VERSION_TAG);
         installationFile("xml/config.xml", configContents);
-        String log4jContents = "log4j.rootLogger...";
-        installationFile("xml/log4j.properties", log4jContents);
+        String log4jContents = "# Custom Config";
+        installationFile("xml/log4j2.properties", log4jContents);
         Constant.setZapInstall(zapInstallDir.toString());
         Constant.setZapHome(zapHomeDir.toString());
         // When
         new Constant();
         // Then
         assertHomeFile("config.xml", configContents);
-        assertHomeFile("log4j.properties", log4jContents);
+        assertHomeFile("log4j2.properties", log4jContents);
         assertHomeDirs();
         assertThat(Files.walk(zapHomeDir).count(), is(equalTo(7L)));
     }
@@ -75,8 +96,9 @@ public class ConstantUnitTest {
         // When
         new Constant();
         // Then
-        assertHomeFile("config.xml", defaultContents("config.xml"));
-        assertHomeFile("log4j.properties", defaultContents("log4j.properties"));
+        assertHomeFile("config.xml", defaultConfigContents());
+        assertHomeFile("log4j2.properties", defaultContents("log4j2-home.properties"));
+        assertHomeFile("zap.log", not(isEmptyString()));
         assertHomeDirs();
         assertThat(Files.walk(zapHomeDir).count(), is(equalTo(8L)));
     }
@@ -91,14 +113,66 @@ public class ConstantUnitTest {
         // When
         new Constant();
         // Then
-        assertHomeFile("config.xml", defaultContents("config.xml"));
+        assertHomeFile("config.xml", defaultConfigContents());
         assertHomeFile(getNameBackupMalformedConfig(), malformedConfig);
     }
 
+    @Test
+    public void shouldUseExistingLog4jConfiguration() throws IOException {
+        // Given
+        String log4jContents = "# Nothing, should not create default log file...";
+        homeFile("log4j2.properties", log4jContents);
+        Constant.setZapInstall(zapInstallDir.toString());
+        Constant.setZapHome(zapHomeDir.toString());
+        // When
+        new Constant();
+        // Then
+        assertHomeFile("log4j2.properties", log4jContents);
+        assertHomeFileNotExists("zap.log");
+    }
+
+    @Test
+    public void shouldBackupLegacyLog4jConfiguration() throws IOException {
+        // Given
+        Constant.setZapInstall(zapInstallDir.toString());
+        Constant.setZapHome(zapHomeDir.toString());
+        String log4jContents = "log4j.rootLogger...";
+        homeFile("log4j.properties", log4jContents);
+        // When
+        new Constant();
+        // Then
+        assertHomeFileNotExists("log4j.properties");
+        assertHomeFile("log4j.properties.bak", log4jContents);
+    }
+
+    @Test
+    public void shouldNotBackupLegacyLog4jConfigurationIfBackupExists() throws IOException {
+        // Given
+        Constant.setZapInstall(zapInstallDir.toString());
+        Constant.setZapHome(zapHomeDir.toString());
+        String log4jContents = "log4j.rootLogger...";
+        homeFile("log4j.properties", log4jContents);
+        String log4jContentsBackup = "backup";
+        homeFile("log4j.properties.bak", log4jContentsBackup);
+        // When
+        new Constant();
+        // Then
+        assertHomeFile("log4j.properties", log4jContents);
+        assertHomeFile("log4j.properties.bak", log4jContentsBackup);
+    }
+
     private void assertHomeFile(String name, String contents) throws IOException {
+        assertHomeFile(name, is(equalTo(contents)));
+    }
+
+    private void assertHomeFile(String name, Matcher<String> contentsMatcher) throws IOException {
         Path file = zapHomeDir.resolve(name);
         assertThat(Files.exists(file), is(true));
-        assertThat(contents(file), is(equalTo(contents)));
+        assertThat(contents(file), contentsMatcher);
+    }
+
+    private void assertHomeFileNotExists(String name) throws IOException {
+        assertThat(Files.exists(zapHomeDir.resolve(name)), is(false));
     }
 
     private void assertHomeDirs() {
@@ -106,6 +180,19 @@ public class ConstantUnitTest {
         assertThat(Files.isDirectory(zapHomeDir.resolve("fuzzers")), is(true));
         assertThat(Files.isDirectory(zapHomeDir.resolve("plugin")), is(true));
         assertThat(Files.isDirectory(zapHomeDir.resolve("session")), is(true));
+    }
+
+    private static String defaultConfigContents() throws IOException {
+        try (InputStream is =
+                Constant.class.getResourceAsStream("/org/zaproxy/zap/resources/config.xml")) {
+            ZapXmlConfiguration configuration = new ZapXmlConfiguration(is);
+            configuration.setProperty("version", Constant.VERSION_TAG);
+            ByteArrayOutputStream os = new ByteArrayOutputStream();
+            configuration.save(os);
+            return os.toString(StandardCharsets.UTF_8.name());
+        } catch (ConfigurationException e) {
+            throw new IOException(e);
+        }
     }
 
     private static String defaultContents(String name) throws IOException {
@@ -149,5 +236,31 @@ public class ConstantUnitTest {
             return file.get().getFileName().toString();
         }
         return null;
+    }
+
+    @Test
+    public void shouldUpgradeFrom2_9_0() {
+        // Given
+        List<String> keyPrefixes = Arrays.asList("a.", "a.b.", "c.");
+        ZapXmlConfiguration configuration = new ZapXmlConfiguration();
+        for (String keyPrefix : keyPrefixes) {
+            configuration.setProperty(keyPrefix + "markocurrences", "true");
+        }
+        String unrelatedKey = "a.markocurrences.y";
+        configuration.setProperty(unrelatedKey, "abc");
+        // When
+        Constant.upgradeFrom2_9_0(configuration);
+        // Then
+        for (String keyPrefix : keyPrefixes) {
+            assertThat(
+                    keyPrefix,
+                    configuration.containsKey(keyPrefix + "markocurrences"),
+                    is(equalTo(false)));
+            assertThat(
+                    keyPrefix,
+                    configuration.getProperty(keyPrefix + "markoccurrences"),
+                    is(equalTo("true")));
+        }
+        assertThat(configuration.getProperty(unrelatedKey), is(equalTo("abc")));
     }
 }

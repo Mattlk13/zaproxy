@@ -55,12 +55,16 @@
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
 // ZAP: 2019/07/10 Add utility methods isValidRisk(int) and isValidConfidence(int)
+// ZAP: 2019/10/21 Add Alert builder.
+// ZAP: 2020/11/03 Add alertRef field.
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.core.scanner;
 
 import java.net.URL;
 import javax.swing.ImageIcon;
 import org.apache.commons.httpclient.URI;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.db.DatabaseException;
 import org.parosproxy.paros.db.RecordAlert;
@@ -190,7 +194,7 @@ public class Alert implements Comparable<Alert> {
     };
 
     private int alertId = -1; // ZAP: Changed default alertId
-    private int pluginId = 0;
+    private int pluginId = -1;
     private String name = "";
     private int risk = RISK_INFO;
     private int confidence = CONFIDENCE_MEDIUM;
@@ -204,21 +208,27 @@ public class Alert implements Comparable<Alert> {
     private String evidence = "";
     private int cweId = -1;
     private int wascId = -1;
-    // Tempory ref - should be cleared asap after use
+    // Temporary ref - should be cleared asap after use
     private HttpMessage message = null;
     // ZAP: Added sourceHistoryId to Alert
     private int sourceHistoryId = 0;
     private HistoryReference historyRef = null;
     // ZAP: Added logger
-    private static final Logger logger = Logger.getLogger(Alert.class);
+    private static final Logger logger = LogManager.getLogger(Alert.class);
     // Cache this info so that we dont have to keep a ref to the HttpMessage
     private String method = "";
     private String postData;
     private URI msgUri = null;
     private Source source = Source.UNKNOWN;
+    private String alertRef = "";
 
     public Alert(int pluginId) {
         this.pluginId = pluginId;
+        if (pluginId > -1) {
+            // By default the alertRef is the plugin ID but rules should set this if they raise > 1
+            // type of alert
+            this.alertRef = Integer.toString(pluginId);
+        }
     }
 
     public Alert(int pluginId, int risk, int confidence, String name) {
@@ -239,7 +249,7 @@ public class Alert implements Comparable<Alert> {
             hRef = new HistoryReference(recordAlert.getHistoryId());
 
         } catch (HttpMalformedHeaderException e) {
-            // ZAP: Just an indication the history record doesnt exist
+            // ZAP: Just an indication the history record doesn't exist
             logger.debug(e.getMessage(), e);
         } catch (Exception e) {
             // ZAP: Log the exception
@@ -265,6 +275,10 @@ public class Alert implements Comparable<Alert> {
                 recordAlert.getWascId(),
                 null);
         setHistoryRef(ref);
+        String alertRef = recordAlert.getAlertRef();
+        if (alertRef != null) {
+            this.setAlertRef(alertRef);
+        }
     }
 
     public Alert(RecordAlert recordAlert, HistoryReference ref) {
@@ -289,9 +303,30 @@ public class Alert implements Comparable<Alert> {
     }
 
     public void setRiskConfidence(int risk, int confidence) {
+        setRisk(risk);
+        setConfidence(confidence);
+    }
+
+    /**
+     * Sets the risk of the alert.
+     *
+     * @param risk the new risk.
+     * @since 2.9.0
+     */
+    public void setRisk(int risk) {
         this.risk = risk;
+    }
+
+    /**
+     * Sets the confidence of the alert.
+     *
+     * @param confidence the new confidence.
+     * @since 2.9.0
+     */
+    public void setConfidence(int confidence) {
         this.confidence = confidence;
     }
+
     /**
      * @deprecated (2.5.0) Replaced by {@link #setName}. Use of alert has been deprecated in favour
      *     of using name.
@@ -324,6 +359,7 @@ public class Alert implements Comparable<Alert> {
      * @param msg the HTTP message that triggers/triggered the issue
      * @deprecated (2.2.0) Replaced by {@link #setDetail(String, String, String, String, String,
      *     String, String, String, int, int, HttpMessage)}. It will be removed in a future release.
+     * @see Builder
      */
     @Deprecated
     public void setDetail(
@@ -353,6 +389,7 @@ public class Alert implements Comparable<Alert> {
      * @param wascId the WASC ID of the issue
      * @param msg the HTTP message that triggers/triggered the issue
      * @since 2.2.0
+     * @see Builder
      */
     public void setDetail(
             String description,
@@ -457,7 +494,12 @@ public class Alert implements Comparable<Alert> {
             return 1;
         }
 
-        int result = name.compareToIgnoreCase(alert2.name);
+        int result = compareStrings(alertRef, alert2.alertRef);
+        if (result != 0) {
+            return result;
+        }
+
+        result = name.compareToIgnoreCase(alert2.name);
         if (result != 0) {
             return result;
         }
@@ -530,6 +572,9 @@ public class Alert implements Comparable<Alert> {
         if (pluginId != item.pluginId) {
             return false;
         }
+        if (!alertRef.equals(item.alertRef)) {
+            return false;
+        }
         if (!name.equals(item.name)) {
             return false;
         }
@@ -573,6 +618,7 @@ public class Alert implements Comparable<Alert> {
         result = prime * result + otherInfo.hashCode();
         result = prime * result + param.hashCode();
         result = prime * result + pluginId;
+        result = prime * result + alertRef.hashCode();
         result = prime * result + method.hashCode();
         result = prime * result + uri.hashCode();
         result = prime * result + ((attack == null) ? 0 : attack.hashCode());
@@ -597,6 +643,9 @@ public class Alert implements Comparable<Alert> {
                 this.solution,
                 this.reference,
                 this.historyRef);
+        item.setEvidence(this.evidence);
+        item.setCweId(this.cweId);
+        item.setWascId(this.wascId);
         item.setSource(this.source);
         return item;
     }
@@ -605,6 +654,7 @@ public class Alert implements Comparable<Alert> {
         StringBuilder sb = new StringBuilder(150); // ZAP: Changed the type to StringBuilder.
         sb.append("<alertitem>\r\n");
         sb.append("  <pluginid>").append(pluginId).append("</pluginid>\r\n");
+        sb.append("  <alertRef>").append(alertRef).append("</alertRef>\r\n");
         sb.append("  <alert>")
                 .append(replaceEntity(name))
                 .append("</alert>\r\n"); // Deprecated in 2.5.0, maintain for compatibility with
@@ -895,11 +945,240 @@ public class Alert implements Comparable<Alert> {
     }
 
     /**
+     * Gets the alert reference.
+     *
+     * <p>This is a unique identifier for the type of alert raised. A scan rule may raise more that
+     * one type of alert and they should all have different alert references.
+     *
+     * @return the alert reference
+     * @since 2.10.0
+     */
+    public String getAlertRef() {
+        return alertRef;
+    }
+
+    /**
+     * Sets the alert reference.
+     *
+     * <p>For manually raised alerts this should be an empty string. For alerts raised by scan rules
+     * it should start with the rule plugin id and optionally include a 'qualifier' (such as "-1",
+     * "-2" etc). Logically different alerts should have different alert references even if they are
+     * raised by the same scan rule.
+     *
+     * @param alertRef the alert reference
+     * @since 2.10.0
+     */
+    public void setAlertRef(String alertRef) {
+        if (alertRef == null) {
+            throw new IllegalArgumentException("Alert reference must not be null");
+        }
+        if (alertRef.length() > 0) {
+            if (alertRef.length() >= 256) {
+                throw new IllegalArgumentException("Alert reference too big: " + alertRef.length());
+            }
+            if (!alertRef.startsWith(Integer.toString(this.pluginId))) {
+                throw new IllegalArgumentException(
+                        "Alert reference "
+                                + alertRef
+                                + " must start with the plugin id "
+                                + this.pluginId);
+            }
+        }
+        this.alertRef = alertRef;
+    }
+
+    /**
+     * Returns a new alert builder.
+     *
+     * @return the alert builder.
+     * @since 2.9.0
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * A builder of alerts.
+     *
+     * @since 2.9.0
+     * @see #build()
+     */
+    public static class Builder {
+
+        private int alertId = -1;
+        private int pluginId;
+        private String name;
+        private int risk = RISK_INFO;
+        private int confidence = CONFIDENCE_MEDIUM;
+        private String description;
+        private String uri;
+        private String param;
+        private String attack;
+        private String otherInfo;
+        private String solution;
+        private String reference;
+        private String evidence;
+        private int cweId = -1;
+        private int wascId = -1;
+        private HttpMessage message;
+        private int sourceHistoryId;
+        private HistoryReference historyRef;
+        private Source source = Source.UNKNOWN;
+        private String alertRef;
+
+        protected Builder() {}
+
+        public Builder setAlertId(int alertId) {
+            this.alertId = alertId;
+            return this;
+        }
+
+        public Builder setPluginId(int pluginId) {
+            this.pluginId = pluginId;
+            return this;
+        }
+
+        public Builder setName(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder setRisk(int risk) {
+            this.risk = risk;
+            return this;
+        }
+
+        public Builder setConfidence(int confidence) {
+            this.confidence = confidence;
+            return this;
+        }
+
+        public Builder setDescription(String description) {
+            this.description = description;
+            return this;
+        }
+
+        public Builder setUri(String uri) {
+            this.uri = uri;
+            return this;
+        }
+
+        public Builder setParam(String param) {
+            this.param = param;
+            return this;
+        }
+
+        public Builder setAttack(String attack) {
+            this.attack = attack;
+            return this;
+        }
+
+        public Builder setOtherInfo(String otherInfo) {
+            this.otherInfo = otherInfo;
+            return this;
+        }
+
+        public Builder setSolution(String solution) {
+            this.solution = solution;
+            return this;
+        }
+
+        public Builder setReference(String reference) {
+            this.reference = reference;
+            return this;
+        }
+
+        public Builder setEvidence(String evidence) {
+            this.evidence = evidence;
+            return this;
+        }
+
+        public Builder setCweId(int cweId) {
+            this.cweId = cweId;
+            return this;
+        }
+
+        public Builder setWascId(int wascId) {
+            this.wascId = wascId;
+            return this;
+        }
+
+        public Builder setMessage(HttpMessage message) {
+            this.message = message;
+            return this;
+        }
+
+        public Builder setSourceHistoryId(int sourceHistoryId) {
+            this.sourceHistoryId = sourceHistoryId;
+            return this;
+        }
+
+        public Builder setHistoryRef(HistoryReference historyRef) {
+            this.historyRef = historyRef;
+            return this;
+        }
+
+        public Builder setSource(Source source) {
+            this.source = source;
+            return this;
+        }
+
+        public Builder setAlertRef(String alertRef) {
+            this.alertRef = alertRef;
+            return this;
+        }
+
+        /**
+         * Builds the alert from the specified data.
+         *
+         * <p>The alert URI defaults to the one from the {@code HistoryReference} or {@code
+         * HttpMessage} if set.
+         *
+         * @return the alert with specified data.
+         */
+        public final Alert build() {
+            String alertUri = uri;
+            if (alertUri == null || alertUri.isEmpty()) {
+                if (historyRef != null) {
+                    alertUri = historyRef.getURI().toString();
+                } else if (message != null) {
+                    alertUri = message.getRequestHeader().getURI().toString();
+                }
+            }
+
+            Alert alert = new Alert(pluginId);
+            alert.setAlertId(alertId);
+            alert.setName(name);
+            alert.setRisk(risk);
+            alert.setConfidence(confidence);
+            alert.setDescription(description);
+            alert.setUri(alertUri);
+            alert.setParam(param);
+            alert.setAttack(attack);
+            alert.setOtherInfo(otherInfo);
+            alert.setSolution(solution);
+            alert.setReference(reference);
+            alert.setEvidence(evidence);
+            alert.setCweId(cweId);
+            alert.setWascId(wascId);
+            alert.setMessage(message);
+            alert.setSourceHistoryId(sourceHistoryId);
+            alert.setHistoryRef(historyRef);
+            alert.setSource(source);
+            if (alertRef != null) {
+                alert.setAlertRef(alertRef);
+            }
+
+            return alert;
+        }
+    }
+
+    /**
      * Checks if a value {@code int} is between {@value #RISK_INFO} (RISK_INFO) and {@value
      * #RISK_HIGH} (RISK_HIGH)
      *
      * @return true if the checked risk ({@code int}) is in the range, false otherwise
-     * @since TODO add version
+     * @since 2.9.0
      * @see #RISK_INFO
      * @see #RISK_HIGH
      */
@@ -913,7 +1192,7 @@ public class Alert implements Comparable<Alert> {
      * (CONFIDENCE_USER_CONFIRMED)
      *
      * @return true if the checked confidence ({@code int}) is in the range, false otherwise
-     * @since TODO add version
+     * @since 2.9.0
      * @see #CONFIDENCE_FALSE_POSITIVE
      * @see #CONFIDENCE_USER_CONFIRMED
      */

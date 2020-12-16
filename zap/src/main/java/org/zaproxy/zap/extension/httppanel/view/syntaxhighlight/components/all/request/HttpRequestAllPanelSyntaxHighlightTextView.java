@@ -19,12 +19,12 @@
  */
 package org.zaproxy.zap.extension.httppanel.view.syntaxhighlight.components.all.request;
 
-import java.awt.Color;
 import java.awt.Component;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.network.HttpMessage;
 import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.extension.httppanel.Message;
@@ -38,6 +38,7 @@ import org.zaproxy.zap.model.DefaultTextHttpMessageLocation;
 import org.zaproxy.zap.model.HttpMessageLocation;
 import org.zaproxy.zap.model.MessageLocation;
 import org.zaproxy.zap.model.TextHttpMessageLocation;
+import org.zaproxy.zap.utils.DisplayUtils;
 import org.zaproxy.zap.view.messagecontainer.http.SelectableContentHttpMessageContainer;
 import org.zaproxy.zap.view.messagelocation.MessageLocationHighlight;
 import org.zaproxy.zap.view.messagelocation.MessageLocationHighlightsManager;
@@ -94,7 +95,7 @@ public class HttpRequestAllPanelSyntaxHighlightTextView extends HttpPanelSyntaxH
         private static final long serialVersionUID = 923466158533211593L;
 
         private static final Logger log =
-                Logger.getLogger(HttpRequestAllPanelSyntaxHighlightTextArea.class);
+                LogManager.getLogger(HttpRequestAllPanelSyntaxHighlightTextArea.class);
 
         // private static final String HTTP_REQUEST_HEADER_AND_BODY = "HTTP Request Header and
         // Body";
@@ -104,13 +105,13 @@ public class HttpRequestAllPanelSyntaxHighlightTextView extends HttpPanelSyntaxH
 
         private static RequestAllTokenMakerFactory tokenMakerFactory = null;
 
-        private CaretVisibilityEnforcerOnFocusGain caretVisiblityEnforcer;
+        private CaretVisibilityEnforcerOnFocusGain caretVisibilityEnforcer;
 
         public HttpRequestAllPanelSyntaxHighlightTextArea() {
             // addSyntaxStyle(HTTP_REQUEST_HEADER_AND_BODY,
             // SYNTAX_STYLE_HTTP_REQUEST_HEADER_AND_BODY);
 
-            caretVisiblityEnforcer = new CaretVisibilityEnforcerOnFocusGain(this);
+            caretVisibilityEnforcer = new CaretVisibilityEnforcerOnFocusGain(this);
         }
 
         @Override
@@ -122,7 +123,7 @@ public class HttpRequestAllPanelSyntaxHighlightTextView extends HttpPanelSyntaxH
         public void setMessage(Message aMessage) {
             super.setMessage(aMessage);
 
-            caretVisiblityEnforcer.setEnforceVisibilityOnFocusGain(aMessage != null);
+            caretVisibilityEnforcer.setEnforceVisibilityOnFocusGain(aMessage != null);
         }
 
         protected MessageLocation getSelection() {
@@ -293,7 +294,9 @@ public class HttpRequestAllPanelSyntaxHighlightTextView extends HttpPanelSyntaxH
         TextHttpMessageLocation textLocation = (TextHttpMessageLocation) location;
 
         return getHttpPanelTextArea()
-                .highlightImpl(textLocation, new TextMessageLocationHighlight(Color.LIGHT_GRAY));
+                .highlightImpl(
+                        textLocation,
+                        new TextMessageLocationHighlight(DisplayUtils.getHighlightColor()));
     }
 
     @Override

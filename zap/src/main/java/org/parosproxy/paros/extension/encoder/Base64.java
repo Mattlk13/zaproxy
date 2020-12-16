@@ -9,9 +9,8 @@
  */
 package org.parosproxy.paros.extension.encoder;
 
-import org.apache.log4j.Logger;
-import org.parosproxy.paros.Constant;
-
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * <p>Encodes and decodes to and from Base64 notation.</p>
@@ -89,7 +88,7 @@ import org.parosproxy.paros.Constant;
  *      <a href="http://www.faqs.org/rfcs/rfc3548.html">RFC3548</a>.</li>
  *    <li><em>Throws exceptions instead of returning null values.</em> Because some operations
  *      (especially those that may permit the GZIP option) use IO streams, there
- *      is a possiblity of an java.io.IOException being thrown. After some discussion and
+ *      is a possibility of an java.io.IOException being thrown. After some discussion and
  *      thought, I've changed the behavior of the methods to throw java.io.IOExceptions
  *      rather than return null if ever there's an error. I think this is more
  *      appropriate, though it will require some changes to your code. Sorry,
@@ -159,7 +158,10 @@ import org.parosproxy.paros.Constant;
  * @author Robert Harder
  * @author rob@iharder.net
  * @version 2.3.7
+ *
+ * @deprecated (TODO Add version) use {@link java.util.Base64}.
  */
+@Deprecated
 public class Base64
 {
     
@@ -207,7 +209,7 @@ public class Base64
     
 /* ********  P R I V A T E   F I E L D S  ******** */  
     
-    private static final Logger logger = Logger.getLogger(Base64.class);
+    private static final Logger logger = LogManager.getLogger(Base64.class);
     
     /** Maximum line length (76) of Base64 output. */
     private static final int MAX_LINE_LENGTH = 76;
@@ -490,7 +492,7 @@ public class Base64
      * anywhere along their length by specifying 
      * <var>srcOffset</var> and <var>destOffset</var>.
      * This method does not check to make sure your arrays
-     * are large enough to accomodate <var>srcOffset</var> + 3 for
+     * are large enough to accommodate <var>srcOffset</var> + 3 for
      * the <var>source</var> array or <var>destOffset</var> + 4 for
      * the <var>destination</var> array.
      * The actual number of significant bytes in your array is
@@ -1020,7 +1022,7 @@ public class Base64
      * anywhere along their length by specifying 
      * <var>srcOffset</var> and <var>destOffset</var>.
      * This method does not check to make sure your arrays
-     * are large enough to accomodate <var>srcOffset</var> + 4 for
+     * are large enough to accommodate <var>srcOffset</var> + 4 for
      * the <var>source</var> array or <var>destOffset</var> + 3 for
      * the <var>destination</var> array.
      * This method returns the actual number of bytes that 
@@ -1173,8 +1175,8 @@ public class Base64
         if( len == 0 ){
             return new byte[0];
         }else if( len < 4 ){
-            throw new IllegalArgumentException(
-        			Constant.messages.getString("enc2.base64.decode.error.invalidlenght", len));
+            throw new IllegalArgumentException( String.format(
+            "Base64-encoded string must have at least four characters, but length specified was %d", len));
         }   // end if
         
         byte[] DECODABET = getDecodabet( options );
@@ -1211,8 +1213,8 @@ public class Base64
             }   // end if: white space, equals sign or better
             else {
                 // There's a bad input character in the Base64 stream.
-                throw new java.io.IOException(
-            			Constant.messages.getString("enc2.base64.decode.error.badinput", source[i] & 0xFF, i));
+                throw new java.io.IOException( String.format(
+                "Bad Base64 input character decimal %d in array position %d", source[i] & 0xFF, i));
             }   // end else: 
         }   // each input character
                                    
@@ -1937,7 +1939,7 @@ public class Base64
             if( suspendEncoding ) {
                 this.out.write( theByte );
                 return;
-            }   // end if: supsended
+            }   // end if: suspended
             
             // Encode?
             if( encode ) {
@@ -1992,7 +1994,7 @@ public class Base64
             if( suspendEncoding ) {
                 this.out.write( theBytes, off, len );
                 return;
-            }   // end if: supsended
+            }   // end if: suspended
             
             for( int i = 0; i < len; i++ ) {
                 write( theBytes[ off + i ] );

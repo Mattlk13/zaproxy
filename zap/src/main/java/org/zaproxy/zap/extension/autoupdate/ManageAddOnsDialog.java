@@ -64,7 +64,8 @@ import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.text.DefaultCaret;
 import javax.swing.text.JTextComponent;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.JXHyperlink;
 import org.jdesktop.swingx.JXPanel;
 import org.jdesktop.swingx.ScrollableSizeHint;
@@ -112,7 +113,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
     private static final String MARKETPLACE_PANEL = "MarketplacePanel";
     private static final double ADD_ON_DETAILS_RESIZE_WEIGHT = 0.7D;
 
-    private static final Logger logger = Logger.getLogger(ManageAddOnsDialog.class);
+    private static final Logger logger = LogManager.getLogger(ManageAddOnsDialog.class);
     private static final long serialVersionUID = 1L;
     private JTabbedPane jTabbed = null;
     private JPanel topPanel = null;
@@ -240,6 +241,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
     }
 
     private JPanel getCorePanel(boolean update) {
+        boolean refresh = true;
         if (corePanel == null) {
             corePanel = new JPanel();
             corePanel.setLayout(new GridBagLayout());
@@ -249,38 +251,30 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                             Constant.messages.getString("cfu.label.zap.border"),
                             TitledBorder.DEFAULT_JUSTIFICATION,
                             javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                            FontUtils.getFont(FontUtils.Size.standard),
-                            java.awt.Color.black));
+                            FontUtils.getFont(FontUtils.Size.standard)));
 
             if (latestInfo == null || this.latestInfo.getZapRelease() == null) {
                 // Haven't checked for updates yet
                 corePanel.add(new JLabel(this.currentVersion), LayoutHelper.getGBC(0, 0, 1, 0.0D));
                 corePanel.add(new JLabel(""), LayoutHelper.getGBC(1, 0, 1, 1.0D));
                 corePanel.add(this.getCheckForUpdatesButton(), LayoutHelper.getGBC(2, 0, 1, 0.0D));
-
-            } else if (this.latestInfo.getZapRelease().isNewerThan(this.currentVersion)) {
-                addNewerVersionComponents(corePanel);
-
-            } else {
-                corePanel.add(
-                        new JLabel(
-                                this.currentVersion
-                                        + " : "
-                                        + Constant.messages.getString("cfu.check.zap.latest")),
-                        LayoutHelper.getGBC(0, 0, 1, 1.0D));
+                refresh = false;
             }
-
-        } else if (update && latestInfo != null && this.latestInfo.getZapRelease() != null) {
-            corePanel.removeAll();
-
+        } else if (latestInfo != null && this.latestInfo.getZapRelease() != null) {
+            if (update) {
+                corePanel.removeAll();
+            }
+        } else {
+            refresh = false;
+        }
+        if (refresh) {
             if (this.latestInfo.getZapRelease().isNewerThan(this.currentVersion)) {
                 addNewerVersionComponents(corePanel);
             } else {
                 corePanel.add(
                         new JLabel(
-                                this.currentVersion
-                                        + " : "
-                                        + Constant.messages.getString("cfu.check.zap.latest")),
+                                Constant.messages.getString(
+                                        "cfu.check.zap.latest", this.currentVersion)),
                         LayoutHelper.getGBC(0, 0, 1, 1.0D));
             }
             installedPanel.validate();
@@ -316,8 +310,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                             Constant.messages.getString("cfu.label.addons.border"),
                             TitledBorder.DEFAULT_JUSTIFICATION,
                             javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                            FontUtils.getFont(FontUtils.Size.standard),
-                            java.awt.Color.black));
+                            FontUtils.getFont(FontUtils.Size.standard)));
 
             getInstalledAddOnsTable();
 
@@ -393,8 +386,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                             Constant.messages.getString("cfu.label.addons.border"),
                             TitledBorder.DEFAULT_JUSTIFICATION,
                             javax.swing.border.TitledBorder.DEFAULT_POSITION,
-                            FontUtils.getFont(FontUtils.Size.standard),
-                            java.awt.Color.black));
+                            FontUtils.getFont(FontUtils.Size.standard)));
 
             if (latestInfo != null) {
                 getMarketplaceCardLayout().show(getMarketplacePanel(), MARKETPLACE_PANEL);
@@ -404,11 +396,11 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
             int column = 0;
             uninstalledAddOnsPanel.add(
                     getMarketplacePanel(), LayoutHelper.getGBC(column, row++, 5, 1.0D, 1.0D));
-            uninstalledAddOnsPanel.add(new JLabel(""), LayoutHelper.getGBC(column++, row, 1, 1.0D));
             if (Constant.isDevMode()) {
                 uninstalledAddOnsPanel.add(
                         getInstallAllButton(), LayoutHelper.getGBC(column++, row, 1, 0.0D));
             }
+            uninstalledAddOnsPanel.add(new JLabel(""), LayoutHelper.getGBC(column++, row, 1, 1.0D));
             uninstalledAddOnsPanel.add(
                     getInstallButton(), LayoutHelper.getGBC(column++, row, 1, 0.0D));
             uninstalledAddOnsPanel.add(
@@ -484,7 +476,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                     new java.awt.event.ActionListener() {
                         @Override
                         public void actionPerformed(java.awt.event.ActionEvent e) {
-                            checkForUpdates();
+                            checkForUpdates(false);
                         }
                     });
             retrievePanel.add(new JLabel(""), LayoutHelper.getGBC(0, 0, 1, 1.0D));
@@ -798,16 +790,16 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                     new java.awt.event.ActionListener() {
                         @Override
                         public void actionPerformed(java.awt.event.ActionEvent e) {
-                            checkForUpdates();
+                            checkForUpdates(false);
                         }
                     });
         }
         return checkForUpdatesButton;
     }
 
-    protected void checkForUpdates() {
+    protected void checkForUpdates(boolean force) {
         this.setCursor(new Cursor(Cursor.WAIT_CURSOR));
-        extension.getLatestVersionInfo(this);
+        extension.getLatestVersionInfo(this, force);
         this.setCursor(Cursor.getDefaultCursor());
     }
 
@@ -1194,7 +1186,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
         logger.debug("gotLatestData(AddOnCollection " + aoc);
 
         if (aoc != null) {
-            setLatestVersionInfo(aoc);
+            EventQueue.invokeLater(() -> setLatestVersionInfo(aoc));
         } else {
             View.getSingleton()
                     .showWarningDialog(this, Constant.messages.getString("cfu.check.failed"));
@@ -1223,6 +1215,8 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
         private final JEditorPane changesField;
         private final JLabel infoLabel;
         private final JXHyperlink infoField;
+        private final JLabel repoLabel;
+        private final JXHyperlink repoField;
         private final ZapLabel idField;
         private final JLabel authorLabel;
         private final ZapLabel authorField;
@@ -1287,6 +1281,10 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
             infoField = new JXHyperlink();
             infoLabel.setLabelFor(infoField);
 
+            repoLabel = new JLabel(Constant.messages.getString("cfu.table.header.repo"));
+            repoField = new JXHyperlink();
+            repoLabel.setLabelFor(repoField);
+
             JLabel idLabel = new JLabel(Constant.messages.getString("cfu.table.header.id"));
             idField = createZapLabelField(idLabel);
 
@@ -1318,6 +1316,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                                             .addComponent(descLabel)
                                             .addComponent(changesLabel)
                                             .addComponent(infoLabel)
+                                            .addComponent(repoLabel)
                                             .addComponent(idLabel)
                                             .addComponent(authorLabel)
                                             .addComponent(dependenciesLabel)
@@ -1353,6 +1352,11 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                                                     Short.MAX_VALUE)
                                             .addComponent(
                                                     infoField,
+                                                    0,
+                                                    GroupLayout.DEFAULT_SIZE,
+                                                    Short.MAX_VALUE)
+                                            .addComponent(
+                                                    repoField,
                                                     0,
                                                     GroupLayout.DEFAULT_SIZE,
                                                     Short.MAX_VALUE)
@@ -1415,6 +1419,10 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
                                             .addComponent(infoField))
                             .addGroup(
                                     layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
+                                            .addComponent(repoLabel)
+                                            .addComponent(repoField))
+                            .addGroup(
+                                    layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
                                             .addComponent(idLabel)
                                             .addComponent(idField))
                             .addGroup(
@@ -1461,15 +1469,8 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
             versionField.setText(addOn.getVersion().toString());
             setTextOrHide(descLabel, descField, addOn.getDescription());
             setTextOrHide(changesLabel, changesField, addOn.getChanges());
-            if (addOn.getInfo() != null) {
-                infoLabel.setVisible(true);
-                infoField.setURI(URI.create(addOn.getInfo().toString()));
-                infoField.setVisible(true);
-            } else {
-                infoLabel.setVisible(false);
-                infoField.setURI(null);
-                infoField.setVisible(false);
-            }
+            setUriOrHide(infoLabel, infoField, addOn.getInfo());
+            setUriOrHide(repoLabel, repoField, addOn.getRepo());
             idField.setText(addOn.getId());
             setTextOrHide(authorLabel, authorField, addOn.getAuthor());
             setTextOrHide(
@@ -1509,6 +1510,7 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
             descField.setText("");
             changesField.setText("");
             infoField.setText("");
+            repoField.setText("");
             idField.setText("");
             authorField.setText("");
             dependenciesField.setText("");
@@ -1531,6 +1533,13 @@ public class ManageAddOnsDialog extends AbstractFrame implements CheckForUpdateC
         label.setVisible(visible);
         textComponent.setVisible(visible);
         textComponent.setText(text);
+    }
+
+    private static void setUriOrHide(JLabel label, JXHyperlink hyperlink, URL url) {
+        boolean visible = url != null;
+        label.setVisible(visible);
+        hyperlink.setVisible(visible);
+        hyperlink.setURI(visible ? URI.create(url.toString()) : null);
     }
 
     private static class DisableSelectionHighlighter extends AbstractHighlighter {

@@ -19,15 +19,14 @@
  */
 package org.zaproxy.zap.extension.sessions;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.ConfigurationException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.db.DatabaseException;
 import org.parosproxy.paros.db.RecordContext;
@@ -38,6 +37,7 @@ import org.zaproxy.zap.model.Context;
 import org.zaproxy.zap.model.ContextDataFactory;
 import org.zaproxy.zap.session.CookieBasedSessionManagementMethodType;
 import org.zaproxy.zap.session.HttpAuthSessionManagementMethodType;
+import org.zaproxy.zap.session.ScriptBasedSessionManagementMethodType;
 import org.zaproxy.zap.session.SessionManagementMethod;
 import org.zaproxy.zap.session.SessionManagementMethodType;
 import org.zaproxy.zap.view.AbstractContextPropertiesPanel;
@@ -54,7 +54,7 @@ public class ExtensionSessionManagement extends ExtensionAdaptor
     public static final String CONTEXT_CONFIG_SESSION_TYPE = CONTEXT_CONFIG_SESSION + ".type";
 
     /** The Constant log. */
-    private static final Logger log = Logger.getLogger(ExtensionSessionManagement.class);
+    private static final Logger log = LogManager.getLogger(ExtensionSessionManagement.class);
 
     /** The automatically loaded session management method types. */
     List<SessionManagementMethodType> sessionManagementMethodTypes;
@@ -97,7 +97,7 @@ public class ExtensionSessionManagement extends ExtensionAdaptor
         }
 
         // Load the Session Management methods
-        this.loadSesssionManagementMethodTypes(extensionHook);
+        this.loadSessionManagementMethodTypes(extensionHook);
 
         // Register the api
         this.api = new SessionManagementAPI(this);
@@ -115,15 +115,6 @@ public class ExtensionSessionManagement extends ExtensionAdaptor
     }
 
     @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
-    }
-
-    @Override
     public String getAuthor() {
         return Constant.ZAP_TEAM;
     }
@@ -137,10 +128,11 @@ public class ExtensionSessionManagement extends ExtensionAdaptor
      *
      * @param extensionHook the extension hook
      */
-    private void loadSesssionManagementMethodTypes(ExtensionHook extensionHook) {
+    private void loadSessionManagementMethodTypes(ExtensionHook extensionHook) {
         this.sessionManagementMethodTypes = new ArrayList<>();
         this.sessionManagementMethodTypes.add(new CookieBasedSessionManagementMethodType());
         this.sessionManagementMethodTypes.add(new HttpAuthSessionManagementMethodType());
+        this.sessionManagementMethodTypes.add(new ScriptBasedSessionManagementMethodType());
 
         for (SessionManagementMethodType t : sessionManagementMethodTypes) {
             t.hook(extensionHook);
@@ -216,13 +208,14 @@ public class ExtensionSessionManagement extends ExtensionAdaptor
 
     @Override
     public void importContextData(Context ctx, Configuration config) throws ConfigurationException {
-        SessionManagementMethodType t =
-                getSessionManagementMethodTypeForIdentifier(
-                        config.getInt(CONTEXT_CONFIG_SESSION_TYPE));
-        if (t != null) {
-            SessionManagementMethod method = t.createSessionManagementMethod(ctx.getId());
-            t.importData(config, method);
-            ctx.setSessionManagementMethod(method);
+        int type = config.getInt(CONTEXT_CONFIG_SESSION_TYPE, -1);
+        if (type > -1) {
+            SessionManagementMethodType t = getSessionManagementMethodTypeForIdentifier(type);
+            if (t != null) {
+                SessionManagementMethod method = t.createSessionManagementMethod(ctx.getId());
+                t.importData(config, method);
+                ctx.setSessionManagementMethod(method);
+            }
         }
     }
 }

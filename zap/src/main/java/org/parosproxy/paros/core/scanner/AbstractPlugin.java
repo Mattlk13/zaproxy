@@ -63,6 +63,12 @@
 // ZAP: 2019/03/22 Add bingo with references.
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2019/10/21 Use and expose Alert builder.
+// ZAP: 2020/01/27 Extracted code from sendAndReceive method into regenerateAntiCsrfToken method in
+// ExtensionAntiCSRF.
+// ZAP: 2020/09/23 Add functionality for custom error pages handling (Issue 9).
+// ZAP: 2020/11/17 Use new TechSet#getAllTech().
+// ZAP: 2020/11/26 Use Log4j2 getLogger() and deprecate Log4j1.x.
 package org.parosproxy.paros.core.scanner;
 
 import java.io.IOException;
@@ -71,20 +77,22 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.security.InvalidParameterException;
 import java.util.Date;
-import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.httpclient.HttpException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.control.Control;
-import org.parosproxy.paros.extension.encoder.Encoder;
+import org.parosproxy.paros.core.scanner.Alert.Source;
+import org.parosproxy.paros.model.HistoryReference;
 import org.parosproxy.paros.network.HttpHeader;
 import org.parosproxy.paros.network.HttpMessage;
+import org.parosproxy.paros.network.HttpStatusCode;
 import org.zaproxy.zap.control.AddOn;
-import org.zaproxy.zap.extension.anticsrf.AntiCsrfToken;
 import org.zaproxy.zap.extension.anticsrf.ExtensionAntiCSRF;
+import org.zaproxy.zap.extension.custompages.CustomPage;
 import org.zaproxy.zap.model.Tech;
 import org.zaproxy.zap.model.TechSet;
 
@@ -100,12 +108,11 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
     private HostProcess parent = null;
     private HttpMessage msg = null;
     private boolean enabled = true;
-    private Logger log = Logger.getLogger(this.getClass());
+    private Logger logger = LogManager.getLogger(this.getClass());
     private Configuration config = null;
     // ZAP Added delayInMs
     private int delayInMs;
     private ExtensionAntiCSRF extAntiCSRF = null;
-    private Encoder encoder = new Encoder();
     private AlertThreshold defaultAttackThreshold = AlertThreshold.MEDIUM;
     private static final AlertThreshold[] alertThresholdsSupported =
             new AlertThreshold[] {AlertThreshold.MEDIUM};
@@ -119,7 +126,7 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
 
     /** Default Constructor */
     public AbstractPlugin() {
-        this.techSet = TechSet.AllTech;
+        this.techSet = TechSet.getAllTech();
     }
 
     @Override
@@ -274,15 +281,8 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
                                 .getExtension(ExtensionAntiCSRF.class);
             }
             if (extAntiCSRF != null) {
-                List<AntiCsrfToken> tokens = extAntiCSRF.getTokens(message);
-                AntiCsrfToken antiCsrfToken = null;
-                if (tokens.size() > 0) {
-                    antiCsrfToken = tokens.get(0);
-                }
-
-                if (antiCsrfToken != null) {
-                    regenerateAntiCsrfToken(message, antiCsrfToken);
-                }
+                extAntiCSRF.regenerateAntiCsrfToken(
+                        message, tokenMsg -> sendAndReceive(tokenMsg, true, false));
             }
         }
 
@@ -321,49 +321,9 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
         parent.performScannerHookAfterScan(message, this);
     }
 
-    private void regenerateAntiCsrfToken(HttpMessage msg, AntiCsrfToken antiCsrfToken) {
-        if (antiCsrfToken == null) {
-            return;
-        }
-
-        String tokenValue = null;
-        try {
-            HttpMessage tokenMsg = antiCsrfToken.getMsg().cloneAll();
-
-            // Ensure we dont loop
-            sendAndReceive(tokenMsg, true, false);
-
-            tokenValue = extAntiCSRF.getTokenValue(tokenMsg, antiCsrfToken.getName());
-
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
-        }
-
-        if (tokenValue != null) {
-            // Replace token value - only supported in the body right now
-            log.debug(
-                    "regenerateAntiCsrfToken replacing "
-                            + antiCsrfToken.getValue()
-                            + " with "
-                            + encoder.getURLEncode(tokenValue));
-            String replaced = msg.getRequestBody().toString();
-            replaced =
-                    replaced.replace(
-                            encoder.getURLEncode(antiCsrfToken.getValue()),
-                            encoder.getURLEncode(tokenValue));
-            msg.setRequestBody(replaced);
-            extAntiCSRF.registerAntiCsrfToken(
-                    new AntiCsrfToken(
-                            msg,
-                            antiCsrfToken.getName(),
-                            tokenValue,
-                            antiCsrfToken.getFormIndex()));
-        }
-    }
-
     @Override
     public void run() {
-        // ZAP : set skipped to false otherwise the plugin shoud stop continously
+        // ZAP : set skipped to false otherwise the plugin should stop continuously
         // this.skipped = false;
 
         try {
@@ -391,7 +351,10 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
      * @param attack the attack that shows the issue
      * @param otherInfo other information about the issue
      * @param msg the message that shows the issue
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     the alert.
      */
+    @Deprecated
     protected void bingo(
             int risk,
             int confidence,
@@ -428,7 +391,10 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
      * @param otherInfo other information about the issue
      * @param solution the solution for the issue
      * @param msg the message that shows the issue
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     the alert.
      */
+    @Deprecated
     protected void bingo(
             int risk,
             int confidence,
@@ -441,31 +407,18 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
             String solution,
             HttpMessage msg) {
 
-        log.debug("New alert pluginid=" + +this.getId() + " " + name + " uri=" + uri);
-
-        Alert alert = new Alert(this.getId(), risk, confidence, name);
-        if (uri == null || uri.equals("")) {
-            uri = msg.getRequestHeader().getURI().toString();
-        }
-
-        if (param == null) {
-            param = "";
-        }
-
-        alert.setDetail(
-                description,
-                uri,
-                param,
-                attack,
-                otherInfo,
-                solution,
-                this.getReference(),
-                "",
-                this.getCweId(),
-                this.getWascId(),
-                msg);
-
-        parent.alertFound(alert);
+        newAlert()
+                .setRisk(risk)
+                .setConfidence(confidence)
+                .setName(name)
+                .setDescription(description)
+                .setUri(uri)
+                .setParam(param)
+                .setAttack(attack)
+                .setOtherInfo(otherInfo)
+                .setSolution(solution)
+                .setMessage(msg)
+                .raise();
     }
 
     /**
@@ -480,7 +433,10 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
      * @param otherInfo other information about the issue
      * @param evidence the evidence (in the response) that shows the issue
      * @param msg the message that shows the issue
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     the alert.
      */
+    @Deprecated
     protected void bingo(
             int risk,
             int confidence,
@@ -520,7 +476,10 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
      * @param solution the solution for the issue
      * @param evidence the evidence (in the response) that shows the issue
      * @param msg the message that shows the issue
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     the alert.
      */
+    @Deprecated
     protected void bingo(
             int risk,
             int confidence,
@@ -534,32 +493,26 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
             String evidence,
             HttpMessage msg) {
 
-        log.debug("New alert pluginid=" + +this.getId() + " " + name + " uri=" + uri);
-        Alert alert = new Alert(this.getId(), risk, confidence, name);
-        if (uri == null || uri.equals("")) {
-            uri = msg.getRequestHeader().getURI().toString();
-        }
-
-        if (param == null) {
-            param = "";
-        }
-
-        alert.setDetail(
-                description,
-                uri,
-                param,
-                attack,
-                otherInfo,
-                solution,
-                this.getReference(),
-                evidence,
-                this.getCweId(),
-                this.getWascId(),
-                msg);
-
-        parent.alertFound(alert);
+        newAlert()
+                .setRisk(risk)
+                .setConfidence(confidence)
+                .setName(name)
+                .setDescription(description)
+                .setUri(uri)
+                .setParam(param)
+                .setAttack(attack)
+                .setOtherInfo(otherInfo)
+                .setSolution(solution)
+                .setEvidence(evidence)
+                .setMessage(msg)
+                .raise();
     }
 
+    /**
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     the alert.
+     */
+    @Deprecated
     protected void bingo(
             int risk,
             int confidence,
@@ -591,6 +544,11 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
                 msg);
     }
 
+    /**
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     the alert.
+     */
+    @Deprecated
     protected void bingo(
             int risk,
             int confidence,
@@ -607,46 +565,190 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
             int wascId,
             HttpMessage msg) {
 
-        log.debug("New alert pluginid=" + +this.getId() + " " + name + " uri=" + uri);
-        Alert alert = new Alert(this.getId(), risk, confidence, name);
-
-        if (uri == null || uri.equals("")) {
-            uri = msg.getRequestHeader().getURI().toString();
-        }
-
-        if (param == null) {
-            param = "";
-        }
-
-        alert.setDetail(
-                description,
-                uri,
-                param,
-                attack,
-                otherInfo,
-                solution,
-                reference,
-                evidence,
-                cweId,
-                wascId,
-                msg);
-
-        parent.alertFound(alert);
+        newAlert()
+                .setRisk(risk)
+                .setConfidence(confidence)
+                .setName(name)
+                .setDescription(description)
+                .setUri(uri)
+                .setParam(param)
+                .setAttack(attack)
+                .setOtherInfo(otherInfo)
+                .setSolution(solution)
+                .setEvidence(evidence)
+                .setReference(reference)
+                .setCweId(cweId)
+                .setWascId(wascId)
+                .setMessage(msg)
+                .raise();
     }
 
     /**
-     * Tells whether or not the file exists, based on previous analysis.
+     * Tells whether or not the file exists, based on {@code CustomPage} definition or previous
+     * analysis. Falls back to use {@code Analyser} which analyzes specific behavior and status
+     * codes.
      *
      * @param msg the message that will be checked
      * @return {@code true} if the file exists, {@code false} otherwise
      */
     protected boolean isFileExist(HttpMessage msg) {
+        return isPage200(msg);
+    }
+
+    /**
+     * Tells whether or not the message matches the specific {@code CustomPage.Type}.
+     *
+     * @param msg the message that will be checked
+     * @param cpType the custom page type to be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     */
+    private boolean isCustomPage(HttpMessage msg, CustomPage.Type cpType) {
+        return parent.isCustomPage(msg, cpType);
+    }
+
+    /**
+     * Tells whether or not the message matches {@code CustomPage.Type.OK_200} definitions. Falls
+     * back to use {@code Analyser} which analyzes specific behavior and status codes. Checks if the
+     * message matches {@code CustomPage.Type.ERROR_500} or {@code CusotmPage.Type.NOTFOUND_404}
+     * first, in case the user is trying to override something.
+     *
+     * @param msg the message that will be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     */
+    protected boolean isPage200(HttpMessage msg) {
+        if (isCustomPage(msg, CustomPage.Type.NOTFOUND_404)
+                || isCustomPage(msg, CustomPage.Type.ERROR_500)) {
+            return false;
+        }
+        if (isCustomPage(msg, CustomPage.Type.OK_200)) {
+            return true;
+        }
         return parent.getAnalyser().isFileExist(msg);
     }
 
     /**
-     * Check if this test should be stopped. It should be checked periodically in Plugin (eg when in
-     * loops) so the HostProcess can stop this Plugin cleanly.
+     * Tells whether or not the message matches {@code CustomPage.Type.ERROR_500} definitions. Falls
+     * back to simply checking the response status code for "500 - Internal Server Error". Checks if
+     * the message matches {@code CustomPage.Type.OK_200} or {@code CusotmPage.Type.NOTFOUND_404}
+     * first, in case the user is trying to override something.
+     *
+     * @param msg the message that will be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     */
+    protected boolean isPage500(HttpMessage msg) {
+        if (isCustomPage(msg, CustomPage.Type.OK_200)
+                || isCustomPage(msg, CustomPage.Type.NOTFOUND_404)) {
+            return false;
+        }
+        if (isCustomPage(msg, CustomPage.Type.ERROR_500)) {
+            return true;
+        }
+        return msg.getResponseHeader().getStatusCode() == HttpStatusCode.INTERNAL_SERVER_ERROR;
+    }
+
+    /**
+     * Tells whether or not the message matches a {@code CustomPage.Type.NOTFOUND_404} definition.
+     * Falls back to {@code Analyser}. Checks if the message matches {@code CustomPage.Type.OK_200}
+     * or {@code CustomPage.Type.ERROR_500} first, in case the user is trying to override something.
+     *
+     * @param msg the message that will be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     */
+    protected boolean isPage404(HttpMessage msg) {
+        if (isCustomPage(msg, CustomPage.Type.OK_200)
+                || isCustomPage(msg, CustomPage.Type.ERROR_500)) {
+            return false;
+        }
+        if (isCustomPage(msg, CustomPage.Type.NOTFOUND_404)) {
+            return true;
+        }
+        return !parent.getAnalyser().isFileExist(msg);
+    }
+
+    /**
+     * Tells whether or not the message matches {@code CustomPage.Type.OTHER} definitions.
+     *
+     * @param msg the message that will be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     */
+    protected boolean isPageOther(HttpMessage msg) {
+        return isCustomPage(msg, CustomPage.Type.OTHER);
+    }
+
+    /**
+     * Tells whether or not the response has a status code between 200 and 299 (inclusive), or
+     * {@code CustomPage.Type.OK_200} and {@code Analyser#isFileExist(HttpMessage)}. Checks if the
+     * message matches {@code CustomPage.Type.NOTFOUND_404} or {@code CustomPage.Type.ERROR_500}
+     * first, in case the user is trying to override something.
+     *
+     * @param msg the message that will be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     * @see {@code Analyser#isFileExist(HttpMessage)}
+     */
+    public boolean isSuccess(HttpMessage msg) {
+        if (isCustomPage(msg, CustomPage.Type.NOTFOUND_404)
+                || isCustomPage(msg, CustomPage.Type.ERROR_500)) {
+            return false;
+        }
+        if (isCustomPage(msg, CustomPage.Type.OK_200) || parent.getAnalyser().isFileExist(msg)) {
+            return true;
+        }
+        return HttpStatusCode.isSuccess(msg.getResponseHeader().getStatusCode());
+    }
+
+    /**
+     * Tells whether or not the response has a status code between 400 and 499 (inclusive), or
+     * {@code CustomPage.Type.NOTFOUND_404} and {@code Analyser#isFileExist(HttpMessage)}. Checks if
+     * the message matches {@code CustomPage.Type.OK_200} or {@code CustomPage.Type.ERROR_500}
+     * first, in case the user is trying to override something.
+     *
+     * @param msg the message that will be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     * @see {@code Analyser#isFileExist(HttpMessage)}
+     */
+    public boolean isClientError(HttpMessage msg) {
+        if (isCustomPage(msg, CustomPage.Type.OK_200)
+                || isCustomPage(msg, CustomPage.Type.ERROR_500)) {
+            return false;
+        }
+        if (isCustomPage(msg, CustomPage.Type.NOTFOUND_404)
+                || !parent.getAnalyser().isFileExist(msg)) {
+            return true;
+        }
+        return HttpStatusCode.isClientError(msg.getResponseHeader().getStatusCode());
+    }
+
+    /**
+     * Tells whether or not the response has a status code between 500 and 599 (inclusive), or
+     * {@code CustomPage.Type.EROOR_500}. Checks if the message matches {@code
+     * CustomPage.Type.OK_200} or {@code CustomPage.Type.NOTFOUND_404} first, in case the user is
+     * trying to override something.
+     *
+     * @param msg the message that will be checked
+     * @return {@code true} if the message matches, {@code false} otherwise
+     * @since TODO Add version
+     */
+    public boolean isServerError(HttpMessage msg) {
+        if (isCustomPage(msg, CustomPage.Type.OK_200)
+                || isCustomPage(msg, CustomPage.Type.NOTFOUND_404)) {
+            return false;
+        }
+        if (isCustomPage(msg, CustomPage.Type.ERROR_500)) {
+            return true;
+        }
+        return HttpStatusCode.isServerError(msg.getResponseHeader().getStatusCode());
+    }
+
+    /**
+     * Check if this test should be stopped. It should be checked periodically in Plugin (e.g. when
+     * in loops) so the HostProcess can stop this Plugin cleanly.
      *
      * @return {@code true} if the scanner should stop, {@code false} otherwise
      */
@@ -954,8 +1056,25 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
         return getParent().getKb();
     }
 
-    protected Logger getLog() {
-        return log;
+    /**
+     * Gets the logger.
+     *
+     * @return the logger, never {@code null}.
+     * @deprecated (TODO add version) Use {@link #getLogger()} instead.
+     */
+    @Deprecated
+    protected org.apache.log4j.Logger getLog() {
+        return org.apache.log4j.Logger.getLogger(getClass());
+    }
+
+    /**
+     * Gets the logger.
+     *
+     * @return the logger, never {@code null}.
+     * @since TODO add version
+     */
+    protected Logger getLogger() {
+        return logger;
     }
 
     public String getProperty(String key) {
@@ -1153,5 +1272,198 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
 
     public void setStatus(AddOn.Status status) {
         this.status = status;
+    }
+
+    /**
+     * Returns a new alert builder.
+     *
+     * <p>By default the alert builder sets the following fields of the alert:
+     *
+     * <ul>
+     *   <li>Plugin ID - using {@link #getId()}
+     *   <li>Name - using {@link #getName()}
+     *   <li>Risk - using {@link #getRisk()}
+     *   <li>Description - using {@link #getDescription()}
+     *   <li>Solution - using {@link #getSolution()}
+     *   <li>Reference - using {@link #getReference()}
+     *   <li>CWE ID - using {@link #getCweId()}
+     *   <li>WASC ID - using {@link #getWascId()}
+     *   <li>URI - from the alert message
+     * </ul>
+     *
+     * @return the alert builder.
+     * @since 2.9.0
+     */
+    protected AlertBuilder newAlert() {
+        return new AlertBuilder(this);
+    }
+
+    /**
+     * An alert builder to fluently build and {@link #raise() raise alerts}.
+     *
+     * @since 2.9.0
+     */
+    public static final class AlertBuilder extends Alert.Builder {
+
+        private final AbstractPlugin plugin;
+        private boolean messageSet;
+
+        private AlertBuilder(AbstractPlugin plugin) {
+            this.plugin = plugin;
+
+            setPluginId(plugin.getId());
+            setName(plugin.getName());
+            setRisk(plugin.getRisk());
+            setDescription(plugin.getDescription());
+            setSolution(plugin.getSolution());
+            setReference(plugin.getReference());
+            setCweId(plugin.getCweId());
+            setWascId(plugin.getWascId());
+        }
+
+        @Override
+        public AlertBuilder setAlertId(int alertId) {
+            super.setAlertId(alertId);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setPluginId(int pluginId) {
+            super.setPluginId(pluginId);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setName(String name) {
+            super.setName(name);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setRisk(int risk) {
+            super.setRisk(risk);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setConfidence(int confidence) {
+            super.setConfidence(confidence);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setDescription(String description) {
+            super.setDescription(description);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setUri(String uri) {
+            super.setUri(uri);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setParam(String param) {
+            super.setParam(param);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setAttack(String attack) {
+            super.setAttack(attack);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setOtherInfo(String otherInfo) {
+            super.setOtherInfo(otherInfo);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setSolution(String solution) {
+            super.setSolution(solution);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setReference(String reference) {
+            super.setReference(reference);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setEvidence(String evidence) {
+            super.setEvidence(evidence);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setCweId(int cweId) {
+            super.setCweId(cweId);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setWascId(int wascId) {
+            super.setWascId(wascId);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setMessage(HttpMessage message) {
+            super.setMessage(message);
+            messageSet = message != null;
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setSourceHistoryId(int sourceHistoryId) {
+            super.setSourceHistoryId(sourceHistoryId);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setHistoryRef(HistoryReference historyRef) {
+            super.setHistoryRef(historyRef);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setSource(Source source) {
+            super.setSource(source);
+            return this;
+        }
+
+        @Override
+        public AlertBuilder setAlertRef(String alertRef) {
+            super.setAlertRef(alertRef);
+            return this;
+        }
+
+        /**
+         * Raises the alert with specified data.
+         *
+         * @throws IllegalStateException if the HTTP message was not set.
+         */
+        public void raise() {
+            if (!messageSet) {
+                throw new IllegalStateException(
+                        "A HTTP message must be set before raising the alert.");
+            }
+
+            Alert alert = build();
+            if (plugin.logger.isDebugEnabled()) {
+                plugin.logger.debug(
+                        "New alert pluginid="
+                                + alert.getPluginId()
+                                + " "
+                                + alert.getName()
+                                + " uri="
+                                + alert.getUri());
+            }
+            plugin.parent.alertFound(alert);
+        }
     }
 }

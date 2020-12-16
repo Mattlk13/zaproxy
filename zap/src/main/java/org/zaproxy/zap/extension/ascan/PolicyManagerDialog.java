@@ -37,11 +37,13 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import org.apache.commons.configuration.ConfigurationException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.view.SingleColumnTableModel;
 import org.zaproxy.zap.view.StandardFieldsDialog;
+import org.zaproxy.zap.view.widgets.WritableFileChooser;
 
 public class PolicyManagerDialog extends StandardFieldsDialog {
 
@@ -58,7 +60,7 @@ public class PolicyManagerDialog extends StandardFieldsDialog {
 
     private ExtensionActiveScan extension;
 
-    private static final Logger logger = Logger.getLogger(PolicyManagerDialog.class);
+    private static final Logger logger = LogManager.getLogger(PolicyManagerDialog.class);
 
     public PolicyManagerDialog(Frame owner) {
         super(owner, "ascan.policymgr.title", new Dimension(512, 400));
@@ -222,7 +224,8 @@ public class PolicyManagerDialog extends StandardFieldsDialog {
                                                     .getValueAt(
                                                             getParamsTable().getSelectedRow(), 0);
                             if (name != null) {
-                                JFileChooser chooser = new JFileChooser(Constant.getPoliciesDir());
+                                JFileChooser chooser =
+                                        new WritableFileChooser(Constant.getPoliciesDir());
                                 File file =
                                         new File(
                                                 Constant.getZapHome(),

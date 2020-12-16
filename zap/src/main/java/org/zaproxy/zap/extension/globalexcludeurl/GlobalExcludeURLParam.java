@@ -24,14 +24,15 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.commons.configuration.ConversionException;
 import org.apache.commons.configuration.HierarchicalConfiguration;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.common.AbstractParam;
 import org.parosproxy.paros.model.Model;
 import org.zaproxy.zap.extension.api.ZapApiIgnore;
 
 public class GlobalExcludeURLParam extends AbstractParam {
 
-    private static final Logger logger = Logger.getLogger(GlobalExcludeURLParam.class);
+    private static final Logger logger = LogManager.getLogger(GlobalExcludeURLParam.class);
 
     private static final String GLOBAL_EXCLUDE_URL_BASE_KEY = "globalexcludeurl";
 
@@ -163,7 +164,7 @@ public class GlobalExcludeURLParam extends AbstractParam {
                 "Site - Firefox h264 codec download", // https://support.mozilla.org/t5/Firefox/Where-is-a-check-that-http-ciscobinary-openh264-org-openh264-is/m-p/1316497#M1005892
                 "false"
             },
-            {"^https?://fonts.*$", "Site - Fonts CDNs such as fonts.gstatic.com, etc", "false"},
+            {"^https?://fonts.*$", "Site - Fonts CDNs such as fonts.gstatic.com, etc.", "false"},
             {
                 "^https?://.*\\.cdn\\.mozilla\\.(?:com|org|net)/.*$",
                 "Site - Mozilla CDN (requests such as getpocket)",

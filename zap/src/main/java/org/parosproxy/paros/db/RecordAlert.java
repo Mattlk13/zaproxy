@@ -25,6 +25,8 @@
 // ZAP: 2016/10/11 Issue 2592: Differentiate the source of alerts
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2019/10/10 Remove old alert update that split the param/attack.
+// ZAP: 2020/11/03 Add alertRef field.
 package org.parosproxy.paros.db;
 
 public class RecordAlert {
@@ -50,6 +52,7 @@ public class RecordAlert {
     // alert
     private int sourceHistoryId = 0;
     private int sourceId = 0;
+    private String alertRef = "";
 
     public RecordAlert() {}
 
@@ -72,7 +75,8 @@ public class RecordAlert {
             int wascId,
             int historyId,
             int sourceHistoryId,
-            int sourceId) {
+            int sourceId,
+            String alertRef) {
         setAlertId(alertId);
         setScanId(scanId);
         setPluginId(pluginId);
@@ -92,12 +96,7 @@ public class RecordAlert {
         setCweId(cweId);
         setWascId(wascId);
         setSourceId(sourceId);
-
-        if ((attack == null || attack.length() == 0) && param.indexOf("=") > 0) {
-            // 'old' alerts will have attack in the param field
-            setAttack(param.substring(param.indexOf("=") + 1));
-            setParam(param.substring(0, param.indexOf("=")));
-        }
+        setAlertRef(alertRef);
     }
 
     /** @return Returns the alert. */
@@ -281,5 +280,25 @@ public class RecordAlert {
      */
     public int getSourceId() {
         return sourceId;
+    }
+
+    /**
+     * Gets the alert reference
+     *
+     * @return the alert reference
+     * @since 2.10.0
+     */
+    public String getAlertRef() {
+        return alertRef;
+    }
+
+    /**
+     * Sets the alert reference
+     *
+     * @param alertRef the alert reference
+     * @since 2.10.0
+     */
+    public void setAlertRef(String alertRef) {
+        this.alertRef = alertRef;
     }
 }

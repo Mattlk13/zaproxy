@@ -19,15 +19,14 @@
  */
 package org.zaproxy.zap.extension.pscan;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import javax.swing.ImageIcon;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.FileConfiguration;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.control.Control.Mode;
@@ -40,7 +39,6 @@ import org.parosproxy.paros.extension.ExtensionLoader;
 import org.parosproxy.paros.extension.SessionChangedListener;
 import org.parosproxy.paros.extension.history.ExtensionHistory;
 import org.parosproxy.paros.model.Session;
-import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.control.CoreFunctionality;
 import org.zaproxy.zap.control.ExtensionFactory;
 import org.zaproxy.zap.extension.alert.ExtensionAlert;
@@ -53,7 +51,7 @@ public class ExtensionPassiveScan extends ExtensionAdaptor implements SessionCha
 
     public static final String NAME = "ExtensionPassiveScan";
     public static final String SCRIPT_TYPE_PASSIVE = "passive";
-    private static final Logger logger = Logger.getLogger(ExtensionPassiveScan.class);
+    private static final Logger logger = LogManager.getLogger(ExtensionPassiveScan.class);
     private PassiveScannerList scannerList;
     private OptionsPassiveScan optionsPassiveScan = null;
     private PolicyPassiveScanPanel policyPanel = null;
@@ -108,7 +106,7 @@ public class ExtensionPassiveScan extends ExtensionAdaptor implements SessionCha
                     .getHookView()
                     .addOptionPanel(getOptionsPassiveScan(getPassiveScanThread()));
             extensionHook.getHookView().addOptionPanel(getPolicyPanel());
-            View.getSingleton()
+            getView()
                     .getMainFrame()
                     .getMainFooterPanel()
                     .addFooterToolbarRightLabel(getScanStatus().getCountLabel());
@@ -176,7 +174,7 @@ public class ExtensionPassiveScan extends ExtensionAdaptor implements SessionCha
 
         PassiveScanner scanner = getPassiveScannerList().removeScanner(className);
 
-        if (scanner != null && View.isInitialised() && scanner instanceof PluginPassiveScanner) {
+        if (scanner != null && hasView() && scanner instanceof PluginPassiveScanner) {
             getPolicyPanel()
                     .getPassiveScanTableModel()
                     .removeScanner((PluginPassiveScanner) scanner);
@@ -284,7 +282,7 @@ public class ExtensionPassiveScan extends ExtensionAdaptor implements SessionCha
 
             added = addPassiveScannerImpl(scanner);
 
-            if (View.isInitialised()) {
+            if (hasView()) {
                 getPolicyPanel().getPassiveScanTableModel().addScanner(scanner);
             }
 
@@ -500,7 +498,7 @@ public class ExtensionPassiveScan extends ExtensionAdaptor implements SessionCha
     @Override
     public void sessionChanged(Session session) {
         startPassiveScanThread();
-        if (View.isInitialised()) {
+        if (hasView()) {
             getScanStatus().setScanCount(0);
         }
     }
@@ -547,15 +545,6 @@ public class ExtensionPassiveScan extends ExtensionAdaptor implements SessionCha
     @Override
     public String getDescription() {
         return Constant.messages.getString("pscan.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     @Override

@@ -46,6 +46,11 @@
 // ZAP: 2018/04/19 Added support for publishing events
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2019/11/09 Ability to filter to active scan (Issue 5278)
+// ZAP: 2020/05/19 simplifying duplicate HostProcess for readability
+// ZAP: 2020/09/23 Add functionality for custom error pages handling (Issue 9).
+// ZAP: 2020/11/17 Use new TechSet#getAllTech().
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.core.scanner;
 
 import java.security.InvalidParameterException;
@@ -58,10 +63,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.Vector;
 import java.util.regex.Pattern;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.common.ThreadPool;
 import org.parosproxy.paros.control.Control;
@@ -71,6 +78,7 @@ import org.parosproxy.paros.network.ConnectionParam;
 import org.parosproxy.paros.network.HttpMessage;
 import org.zaproxy.zap.extension.ascan.ActiveScanEventPublisher;
 import org.zaproxy.zap.extension.ascan.ScanPolicy;
+import org.zaproxy.zap.extension.ascan.filters.ScanFilter;
 import org.zaproxy.zap.extension.ruleconfig.RuleConfigParam;
 import org.zaproxy.zap.extension.script.ScriptCollection;
 import org.zaproxy.zap.model.ScanEventPublisher;
@@ -82,7 +90,7 @@ import org.zaproxy.zap.users.User;
 
 public class Scanner implements Runnable {
 
-    private static Logger log = Logger.getLogger(Scanner.class);
+    private static Logger log = LogManager.getLogger(Scanner.class);
     private static DecimalFormat decimalFormat = new java.text.DecimalFormat("###0.###");
 
     private Vector<ScannerListener> listenerList = new Vector<>();
@@ -103,6 +111,7 @@ public class Scanner implements Runnable {
     private User user = null;
     private TechSet techSet;
     private Set<ScriptCollection> scriptCollections = new HashSet<ScriptCollection>();
+    private List<ScanFilter> scanFilters = new ArrayList<>();
     private int id;
 
     // ZAP: Added scanner pause option
@@ -147,7 +156,7 @@ public class Scanner implements Runnable {
         // ZAP: Load all scanner hooks from extensionloader.
         Control.getSingleton().getExtensionLoader().hookScannerHook(this);
 
-        techSet = TechSet.AllTech;
+        techSet = TechSet.getAllTech();
     }
 
     public void start(SiteNode startNode) {
@@ -229,17 +238,7 @@ public class Scanner implements Runnable {
                 while (iter.hasNext()) {
                     StructuralNode child = iter.next();
                     String hostAndPort = getHostAndPort(child);
-                    hostProcess =
-                            new HostProcess(
-                                    hostAndPort,
-                                    this,
-                                    scannerParam,
-                                    connectionParam,
-                                    scanPolicy,
-                                    ruleConfigParam);
-                    hostProcess.setStartNode(child);
-                    hostProcess.setUser(this.user);
-                    hostProcess.setTechSet(this.techSet);
+                    hostProcess = createHostProcess(hostAndPort, child);
                     this.hostProcesses.add(hostProcess);
                     do {
                         thread = pool.getFreeThreadAndRun(hostProcess);
@@ -256,17 +255,7 @@ public class Scanner implements Runnable {
                     String hostAndPort = getHostAndPort(node);
                     hostProcess = processMap.get(hostAndPort);
                     if (hostProcess == null) {
-                        hostProcess =
-                                new HostProcess(
-                                        hostAndPort,
-                                        this,
-                                        scannerParam,
-                                        connectionParam,
-                                        scanPolicy,
-                                        ruleConfigParam);
-                        hostProcess.setStartNode(node);
-                        hostProcess.setUser(this.user);
-                        hostProcess.setTechSet(this.techSet);
+                        hostProcess = createHostProcess(hostAndPort, node);
                         processMap.put(hostAndPort, hostProcess);
                     } else {
                         hostProcess.addStartNode(node);
@@ -296,19 +285,9 @@ public class Scanner implements Runnable {
             }
             // Loop through all of the top nodes containing children
             for (SiteNode node : nodes) {
-                HostProcess hostProcess = null;
                 String hostAndPort = getHostAndPort(node);
-                hostProcess =
-                        new HostProcess(
-                                hostAndPort,
-                                this,
-                                scannerParam,
-                                connectionParam,
-                                scanPolicy,
-                                ruleConfigParam);
-                hostProcess.setStartNode(new StructuralSiteNode(node));
-                hostProcess.setUser(this.user);
-                hostProcess.setTechSet(this.techSet);
+                HostProcess hostProcess =
+                        createHostProcess(hostAndPort, new StructuralSiteNode(node));
                 this.hostProcesses.add(hostProcess);
                 do {
                     thread = pool.getFreeThreadAndRun(hostProcess);
@@ -319,6 +298,22 @@ public class Scanner implements Runnable {
                 }
             }
         }
+    }
+
+    private HostProcess createHostProcess(String hostAndPort, StructuralNode node) {
+        HostProcess hostProcess =
+                new HostProcess(
+                        hostAndPort,
+                        this,
+                        scannerParam,
+                        connectionParam,
+                        scanPolicy,
+                        ruleConfigParam);
+        hostProcess.setStartNode(node);
+        hostProcess.setUser(this.user);
+        hostProcess.setTechSet(this.techSet);
+        hostProcess.setContext(target.getContext());
+        return hostProcess;
     }
 
     public boolean isStop() {
@@ -401,6 +396,13 @@ public class Scanner implements Runnable {
                                 + e.getMessage(),
                         e);
             }
+        }
+    }
+
+    void notifyFilteredMessage(HttpMessage msg, String reason) {
+        for (int i = 0; i < listenerList.size(); i++) {
+            ScannerListener listener = listenerList.get(i);
+            listener.filteredMessage(msg, reason);
         }
     }
 
@@ -568,5 +570,13 @@ public class Scanner implements Runnable {
 
     public void setId(int id) {
         this.id = id;
+    }
+
+    List<ScanFilter> getScanFilters() {
+        return scanFilters;
+    }
+
+    public void addScanFilter(ScanFilter scanFilter) {
+        this.scanFilters.add(Objects.requireNonNull(scanFilter));
     }
 }

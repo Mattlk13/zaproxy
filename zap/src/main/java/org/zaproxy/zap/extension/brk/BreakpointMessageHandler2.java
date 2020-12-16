@@ -22,19 +22,22 @@ package org.zaproxy.zap.extension.brk;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.control.Control.Mode;
 import org.zaproxy.zap.extension.httppanel.Message;
 
 public class BreakpointMessageHandler2 {
 
-    private static final Logger LOGGER = Logger.getLogger(BreakpointMessageHandler2.class);
+    private static final Logger LOGGER = LogManager.getLogger(BreakpointMessageHandler2.class);
 
     protected static final Object SEMAPHORE = new Object();
 
     protected final BreakpointManagementInterface breakMgmt;
 
     protected List<BreakpointMessageInterface> enabledBreakpoints;
+
+    protected List<BreakpointMessageInterface> enabledIgnoreRules;
 
     private List<String> enabledKeyBreakpoints = new ArrayList<>();
 
@@ -54,6 +57,10 @@ public class BreakpointMessageHandler2 {
         this.enabledBreakpoints = breakpoints;
     }
 
+    public void setEnabledIgnoreRules(List<BreakpointMessageInterface> IgnoreRules) {
+        this.enabledIgnoreRules = IgnoreRules;
+    }
+
     /**
      * Do not call if in {@link Mode#safe}.
      *
@@ -67,8 +74,8 @@ public class BreakpointMessageHandler2 {
         }
 
         // Do this outside of the semaphore loop so that the 'continue' button can apply to all
-        // queued break points
-        // but be reset when the next break point is hit
+        // queued breakpoints
+        // but be reset when the next breakpoint is hit
         breakMgmt.breakpointHit();
         BreakEventPublisher.getPublisher().publishHitEvent(aMessage);
 
@@ -97,8 +104,8 @@ public class BreakpointMessageHandler2 {
         }
 
         // Do this outside of the semaphore loop so that the 'continue' button can apply to all
-        // queued break points
-        // but be reset when the next break point is hit
+        // queued breakpoints
+        // but be reset when the next breakpoint is hit
         breakMgmt.breakpointHit();
         BreakEventPublisher.getPublisher().publishHitEvent(aMessage);
 
@@ -146,6 +153,10 @@ public class BreakpointMessageHandler2 {
             return true;
         }
 
+        if (isSkipOnIgnoreRules(aMessage, isRequest, onlyIfInScope)) {
+            return false;
+        }
+
         if (onlyIfInScope && !aMessage.isInScope()) {
             return false;
         }
@@ -179,11 +190,11 @@ public class BreakpointMessageHandler2 {
     protected boolean isBreakOnEnabledBreakpoint(
             Message aMessage, boolean isRequest, boolean onlyIfInScope) {
         if (enabledBreakpoints.isEmpty()) {
-            // No break points
+            // No breakpoints
             return false;
         }
 
-        // match against the break points
+        // match against the breakpoints
         synchronized (enabledBreakpoints) {
             Iterator<BreakpointMessageInterface> it = enabledBreakpoints.iterator();
 
@@ -191,6 +202,30 @@ public class BreakpointMessageHandler2 {
                 BreakpointMessageInterface breakpoint = it.next();
 
                 if (breakpoint.match(aMessage, isRequest, onlyIfInScope)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    protected boolean isSkipOnIgnoreRules(
+            Message aMessage, boolean isRequest, boolean onlyIfInScope) {
+        if (enabledIgnoreRules.isEmpty()) {
+            // No Ignoring rules
+            return false;
+        }
+
+        // match against the ignoring rule
+        synchronized (enabledIgnoreRules) {
+            Iterator<BreakpointMessageInterface> it = enabledIgnoreRules.iterator();
+
+            while (it.hasNext()) {
+                BreakpointMessageInterface ignoreRule = it.next();
+
+                if (ignoreRule.isEnabled()
+                        && ignoreRule.match(aMessage, isRequest, onlyIfInScope)) {
                     return true;
                 }
             }

@@ -20,17 +20,19 @@
 package org.zaproxy.zap.extension.anticsrf;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import org.apache.commons.configuration.ConversionException;
 import org.apache.commons.configuration.HierarchicalConfiguration;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.common.AbstractParam;
 import org.zaproxy.zap.extension.api.ZapApiIgnore;
 
 public class AntiCsrfParam extends AbstractParam {
 
-    private static final Logger logger = Logger.getLogger(AntiCsrfParam.class);
+    private static final Logger logger = LogManager.getLogger(AntiCsrfParam.class);
 
     private static final String ANTI_CSRF_BASE_KEY = "anticsrf";
 
@@ -42,6 +44,9 @@ public class AntiCsrfParam extends AbstractParam {
     private static final String CONFIRM_REMOVE_TOKEN_KEY =
             ANTI_CSRF_BASE_KEY + ".confirmRemoveToken";
 
+    private static final String PARTIAL_MATCHING_ENABLED =
+            ANTI_CSRF_BASE_KEY + ".partialMatchingEnabled";
+
     private static final String[] DEFAULT_TOKENS_NAMES = {
         "anticsrf",
         "CSRFToken",
@@ -52,13 +57,17 @@ public class AntiCsrfParam extends AbstractParam {
         "anoncsrf",
         "csrf_token",
         "_csrf",
-        "_csrfSecret"
+        "_csrfSecret",
+        "__csrf_magic",
+        "CSRF"
     };
 
     private List<AntiCsrfParamToken> tokens = null;
     private List<String> enabledTokensNames = null;
 
     private boolean confirmRemoveToken = true;
+
+    private boolean partialMatchingEnabled = true;
 
     public AntiCsrfParam() {}
 
@@ -87,14 +96,25 @@ public class AntiCsrfParam extends AbstractParam {
             this.enabledTokensNames = new ArrayList<>(DEFAULT_TOKENS_NAMES.length);
         }
 
-        if (this.tokens.size() == 0) {
-            for (String tokenName : DEFAULT_TOKENS_NAMES) {
-                this.tokens.add(new AntiCsrfParamToken(tokenName));
-                this.enabledTokensNames.add(tokenName);
-            }
-        }
+        addMissingTokens();
 
         this.confirmRemoveToken = getBoolean(CONFIRM_REMOVE_TOKEN_KEY, true);
+        this.partialMatchingEnabled = getBoolean(PARTIAL_MATCHING_ENABLED, true);
+    }
+
+    /**
+     * Adds Anti-CSRF tokens if the existing list doesn't already contain all the defaults.
+     *
+     * @see #addToken(String)
+     */
+    private void addMissingTokens() {
+        List<String> defaultTokensNames = Arrays.asList(DEFAULT_TOKENS_NAMES);
+        if (getTokensNames().containsAll(defaultTokensNames)) {
+            return;
+        }
+        defaultTokensNames.forEach((token) -> addToken(token));
+
+        setTokens(tokens);
     }
 
     @ZapApiIgnore
@@ -138,15 +158,10 @@ public class AntiCsrfParam extends AbstractParam {
             return;
         }
 
-        for (Iterator<AntiCsrfParamToken> it = tokens.iterator(); it.hasNext(); ) {
-            if (name.equals(it.next().getName())) {
-                return;
-            }
+        if (tokens.stream().noneMatch(token -> name.equals(token.getName()))) {
+            this.tokens.add(new AntiCsrfParamToken(name));
+            this.enabledTokensNames.add(name);
         }
-
-        this.tokens.add(new AntiCsrfParamToken(name));
-
-        this.enabledTokensNames.add(name);
     }
 
     /**
@@ -188,5 +203,20 @@ public class AntiCsrfParam extends AbstractParam {
     public void setConfirmRemoveToken(boolean confirmRemove) {
         this.confirmRemoveToken = confirmRemove;
         getConfig().setProperty(CONFIRM_REMOVE_TOKEN_KEY, confirmRemoveToken);
+    }
+
+    /** Returns true if should detect CSRF tokens by searching for partial matches. */
+    public boolean isPartialMatchingEnabled() {
+        return partialMatchingEnabled;
+    }
+
+    /**
+     * Define if ZAP should detect CSRF tokens by searching for partial matches.
+     *
+     * @param enabled
+     */
+    public void setPartialMatchingEnabled(boolean enabled) {
+        this.partialMatchingEnabled = enabled;
+        getConfig().setProperty(PARTIAL_MATCHING_ENABLED, partialMatchingEnabled);
     }
 }

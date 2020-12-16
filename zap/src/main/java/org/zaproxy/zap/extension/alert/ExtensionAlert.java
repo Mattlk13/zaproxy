@@ -23,8 +23,6 @@ import java.awt.EventQueue;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -38,7 +36,8 @@ import java.util.Vector;
 import javax.swing.JTree;
 import javax.swing.tree.TreePath;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.control.Control.Mode;
@@ -73,7 +72,7 @@ public class ExtensionAlert extends ExtensionAdaptor
         implements SessionChangedListener, XmlReporterExtension, OptionsChangedListener {
 
     public static final String NAME = "ExtensionAlert";
-    private static final Logger logger = Logger.getLogger(ExtensionAlert.class);
+    private static final Logger logger = LogManager.getLogger(ExtensionAlert.class);
     private Map<Integer, HistoryReference> hrefs = new HashMap<>();
     private AlertTreeModel treeModel = null;
     private AlertTreeModel filteredTreeModel = null;
@@ -81,6 +80,7 @@ public class ExtensionAlert extends ExtensionAdaptor
     private RecordScan recordScan = null;
     private PopupMenuAlert popupMenuAlertAdd;
     private PopupMenuAlertEdit popupMenuAlertEdit = null;
+    private PopupMenuAlertSetFalsePositive popupMenuAlertSetFalsePositive = null;
     private PopupMenuAlertDelete popupMenuAlertDelete = null;
     private PopupMenuAlertsRefresh popupMenuAlertsRefresh = null;
     private PopupMenuShowAlerts popupMenuShowAlerts = null;
@@ -107,6 +107,7 @@ public class ExtensionAlert extends ExtensionAdaptor
             extensionHook.getHookView().addOptionPanel(getOptionsPanel());
             extensionHook.getHookMenu().addPopupMenuItem(getPopupMenuAlertAdd());
             extensionHook.getHookMenu().addPopupMenuItem(getPopupMenuAlertEdit());
+            extensionHook.getHookMenu().addPopupMenuItem(getPopupMenuAlertSetFalsePositive());
             extensionHook.getHookMenu().addPopupMenuItem(getPopupMenuAlertDelete());
             extensionHook.getHookMenu().addPopupMenuItem(getPopupMenuAlertsRefresh());
             extensionHook.getHookMenu().addPopupMenuItem(getPopupMenuShowAlerts());
@@ -205,8 +206,7 @@ public class ExtensionAlert extends ExtensionAdaptor
 
             try {
                 if (getView() == null || EventQueue.isDispatchThread()) {
-                    SessionStructure.addPath(
-                            Model.getSingleton().getSession(), ref, alert.getMessage());
+                    SessionStructure.addPath(Model.getSingleton(), ref, alert.getMessage());
                 } else {
                     final HistoryReference fRef = ref;
                     final HttpMessage fMsg = alert.getMessage();
@@ -215,8 +215,7 @@ public class ExtensionAlert extends ExtensionAdaptor
 
                                 @Override
                                 public void run() {
-                                    SessionStructure.addPath(
-                                            Model.getSingleton().getSession(), fRef, fMsg);
+                                    SessionStructure.addPath(Model.getSingleton(), fRef, fMsg);
                                 }
                             });
                 }
@@ -340,7 +339,7 @@ public class ExtensionAlert extends ExtensionAdaptor
             return;
         }
 
-        if (!View.isInitialised() || EventQueue.isDispatchThread()) {
+        if (!hasView() || EventQueue.isDispatchThread()) {
             addAlertToTreeEventHandler(alert);
 
         } else {
@@ -438,7 +437,8 @@ public class ExtensionAlert extends ExtensionAdaptor
                         alert.getWascId(),
                         ref.getHistoryId(),
                         alert.getSourceHistoryId(),
-                        alert.getSource().getId());
+                        alert.getSource().getId(),
+                        alert.getAlertRef());
 
         alert.setAlertId(recordAlert.getAlertId());
     }
@@ -510,7 +510,7 @@ public class ExtensionAlert extends ExtensionAdaptor
         }
         this.recalcAlerts();
 
-        if (View.isInitialised()) {
+        if (hasView()) {
             JTree alertTree = this.getAlertPanel().getTreeAlert();
             TreePath alertPath = new TreePath(getTreeModel().getAlertNode(alert).getPath());
             alertTree.setSelectionPath(alertPath);
@@ -546,7 +546,7 @@ public class ExtensionAlert extends ExtensionAdaptor
         hrefs = new HashMap<>();
 
         if (session == null) {
-            // Null session indicated we're sutting down
+            // Null session indicated we're shutting down
             return;
         }
 
@@ -565,7 +565,7 @@ public class ExtensionAlert extends ExtensionAdaptor
         SiteMap siteTree = this.getModel().getSession().getSiteTree();
 
         TableAlert tableAlert = getModel().getDb().getTableAlert();
-        // TODO this doesnt work, but should be used when its fixed :/
+        // TODO this doesn't work, but should be used when its fixed :/
         // Vector<Integer> v =
         // tableAlert.getAlertListBySession(Model.getSingleton().getSession().getSessionId());
         Vector<Integer> v = tableAlert.getAlertList();
@@ -618,6 +618,13 @@ public class ExtensionAlert extends ExtensionAdaptor
             popupMenuAlertEdit = new PopupMenuAlertEdit(this);
         }
         return popupMenuAlertEdit;
+    }
+
+    private PopupMenuAlertSetFalsePositive getPopupMenuAlertSetFalsePositive() {
+        if (popupMenuAlertSetFalsePositive == null) {
+            popupMenuAlertSetFalsePositive = new PopupMenuAlertSetFalsePositive();
+        }
+        return popupMenuAlertSetFalsePositive;
     }
 
     private PopupMenuAlertDelete getPopupMenuAlertDelete() {
@@ -779,7 +786,7 @@ public class ExtensionAlert extends ExtensionAdaptor
      * @see View#isInitialised()
      */
     void recalcAlerts() {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
         // Must only be called when View is initialised
@@ -808,7 +815,7 @@ public class ExtensionAlert extends ExtensionAdaptor
                 }
             }
         }
-        MainFooterPanel footer = View.getSingleton().getMainFrame().getMainFooterPanel();
+        MainFooterPanel footer = getView().getMainFrame().getMainFooterPanel();
         footer.setAlertInfo(totalInfo);
         footer.setAlertLow(totalLow);
         footer.setAlertMedium(totalMedium);
@@ -821,7 +828,7 @@ public class ExtensionAlert extends ExtensionAdaptor
         TableAlert tableAlert = getModel().getDb().getTableAlert();
         Vector<Integer> v;
         try {
-            // TODO this doesnt work, but should be used when its fixed :/
+            // TODO this doesn't work, but should be used when its fixed :/
             // v =
             // tableAlert.getAlertListBySession(Model.getSingleton().getSession().getSessionId());
             v = tableAlert.getAlertList();
@@ -911,15 +918,6 @@ public class ExtensionAlert extends ExtensionAdaptor
     @Override
     public String getDescription() {
         return Constant.messages.getString("alerts.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     @Override

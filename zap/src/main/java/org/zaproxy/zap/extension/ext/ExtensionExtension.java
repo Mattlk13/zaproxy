@@ -20,12 +20,11 @@
 package org.zaproxy.zap.extension.ext;
 
 import java.io.File;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.extension.CommandLineArgument;
@@ -39,7 +38,7 @@ public class ExtensionExtension extends ExtensionAdaptor implements CommandLineL
 
     private OptionsExtensionPanel optionsExceptionsPanel = null;
 
-    private Logger logger = Logger.getLogger(ExtensionExtension.class);
+    private Logger logger = LogManager.getLogger(ExtensionExtension.class);
 
     public ExtensionExtension() {
         super();
@@ -92,15 +91,6 @@ public class ExtensionExtension extends ExtensionAdaptor implements CommandLineL
     @Override
     public String getDescription() {
         return Constant.messages.getString("ext.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     @Override

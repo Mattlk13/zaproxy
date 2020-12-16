@@ -29,9 +29,11 @@
 // ZAP: 2018/08/17 Show a message if the string was not found (Issue 4935).
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.view;
 
 import java.awt.Component;
+import java.awt.FlowLayout;
 import java.awt.Frame;
 import java.awt.HeadlessException;
 import java.awt.Window;
@@ -45,16 +47,18 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.text.JTextComponent;
 import org.apache.commons.collections.map.ReferenceMap;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.extension.AbstractDialog;
+import org.zaproxy.zap.utils.DisplayUtils;
 import org.zaproxy.zap.utils.ZapTextField;
 
 public class FindDialog extends AbstractDialog {
 
     private static final long serialVersionUID = -3223449799557586758L;
 
-    private static final Logger LOGGER = Logger.getLogger(FindDialog.class);
+    private static final Logger LOGGER = LogManager.getLogger(FindDialog.class);
 
     @SuppressWarnings("unchecked")
     private static Map<Object, FindDialog> parentsMap =
@@ -197,6 +201,7 @@ public class FindDialog extends AbstractDialog {
 
             int length = findText.length();
             if (startPos > -1) {
+                txtComp.setSelectionColor(DisplayUtils.getHighlightColor());
                 txtComp.select(startPos, startPos + length);
                 txtComp.requestFocusInWindow();
                 txtFind.requestFocusInWindow();
@@ -308,7 +313,7 @@ public class FindDialog extends AbstractDialog {
      */
     private JPanel getJPanel1() {
         if (jPanel1 == null) {
-            jPanel1 = new JPanel();
+            jPanel1 = new JPanel(new FlowLayout(FlowLayout.TRAILING));
             jPanel1.add(getBtnFind());
             jPanel1.add(getBtnCancel());
         }

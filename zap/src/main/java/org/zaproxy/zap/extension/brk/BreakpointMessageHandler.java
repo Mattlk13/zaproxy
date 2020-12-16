@@ -23,7 +23,8 @@ import java.awt.EventQueue;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.control.Control.Mode;
 import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.extension.httppanel.Message;
@@ -32,7 +33,7 @@ import org.zaproxy.zap.extension.httppanel.Message;
 @Deprecated
 public class BreakpointMessageHandler {
 
-    private static final Logger logger = Logger.getLogger(BreakpointMessageHandler.class);
+    private static final Logger logger = LogManager.getLogger(BreakpointMessageHandler.class);
 
     protected static final java.lang.Object semaphore = new java.lang.Object();
 
@@ -71,8 +72,8 @@ public class BreakpointMessageHandler {
         }
 
         // Do this outside of the semaphore loop so that the 'continue' button can apply to all
-        // queued break points
-        // but be reset when the next break point is hit
+        // queued breakpoints
+        // but be reset when the next breakpoint is hit
         breakPanel.breakpointHit();
 
         synchronized (semaphore) {
@@ -98,8 +99,8 @@ public class BreakpointMessageHandler {
         }
 
         // Do this outside of the semaphore loop so that the 'continue' button can apply to all
-        // queued break points
-        // but be reset when the next break point is hit
+        // queued breakpoints
+        // but be reset when the next breakpoint is hit
         breakPanel.breakpointHit();
 
         synchronized (semaphore) {
@@ -210,11 +211,11 @@ public class BreakpointMessageHandler {
     protected boolean isBreakOnEnabledBreakpoint(
             Message aMessage, boolean isRequest, boolean onlyIfInScope) {
         if (enabledBreakpoints.isEmpty()) {
-            // No break points
+            // No breakpoints
             return false;
         }
 
-        // match against the break points
+        // match against the breakpoints
         synchronized (enabledBreakpoints) {
             Iterator<BreakpointMessageInterface> it = enabledBreakpoints.iterator();
 

@@ -30,7 +30,8 @@ import java.util.Set;
 import net.htmlparser.jericho.Config;
 import org.apache.commons.httpclient.URI;
 import org.apache.commons.httpclient.URIException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.network.HttpMessage;
 import org.parosproxy.paros.network.HttpRequestHeader;
 import org.zaproxy.zap.spider.filters.FetchFilter;
@@ -63,6 +64,8 @@ public class SpiderController implements SpiderParserListener {
      */
     private LinkedList<ParseFilter> parseFilters;
 
+    private ParseFilter defaultParseFilter;
+
     /** The parsers used by the spider. */
     private LinkedList<SpiderParser> parsers;
 
@@ -78,7 +81,7 @@ public class SpiderController implements SpiderParserListener {
     private Map<String, ArrayList<String>> visitedPost;
 
     /** The Constant log. */
-    private static final Logger log = Logger.getLogger(SpiderController.class);
+    private static final Logger log = LogManager.getLogger(SpiderController.class);
 
     /**
      * Instantiates a new spider controller.
@@ -228,6 +231,15 @@ public class SpiderController implements SpiderParserListener {
         parseFilters.add(filter);
     }
 
+    protected void setDefaultParseFilter(ParseFilter filter) {
+        log.debug("Setting Default filter: " + filter.getClass().getSimpleName());
+        defaultParseFilter = filter;
+    }
+
+    protected ParseFilter getDefaultParseFilter() {
+        return defaultParseFilter;
+    }
+
     public void init() {
         visitedGet.clear();
         visitedPost.clear();
@@ -297,7 +309,7 @@ public class SpiderController implements SpiderParserListener {
             log.debug(
                     "URI: "
                             + uriV
-                            + " is valid, but will not be fetched, by parser reccommendation.");
+                            + " is valid, but will not be fetched, by parser recommendation.");
             spider.notifyListenersFoundURI(uri, HttpRequestHeader.GET, FetchStatus.VALID);
             return;
         }

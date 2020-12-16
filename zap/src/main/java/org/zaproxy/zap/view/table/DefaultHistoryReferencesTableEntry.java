@@ -25,6 +25,7 @@ import java.util.Date;
 import java.util.List;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.model.HistoryReference;
+import org.zaproxy.zap.view.HrefTypeInfo;
 import org.zaproxy.zap.view.table.HistoryReferencesTableModel.Column;
 
 /**
@@ -39,9 +40,12 @@ public class DefaultHistoryReferencesTableEntry extends AbstractHistoryReference
 
     private final Integer historyId;
     private final Integer historyType;
+    private final HrefTypeInfo hrefTypeInfo;
     private final Long sessionId;
     private final String method;
     private final String uri;
+    private final String hostname;
+    private final String pathAndQuery;
     private final Integer statusCode;
     private final String reason;
     private final Date timeSentMillis;
@@ -71,6 +75,10 @@ public class DefaultHistoryReferencesTableEntry extends AbstractHistoryReference
                 hasColumn(sortedColumns, Column.HREF_TYPE)
                         ? historyReference.getHistoryType()
                         : null;
+        hrefTypeInfo =
+                hasColumn(sortedColumns, Column.HREF_TYPE_INFO)
+                        ? HrefTypeInfo.getFromType(historyReference.getHistoryType())
+                        : super.getHistoryTypeInfo();
         sessionId =
                 hasColumn(sortedColumns, Column.SESSION_ID)
                         ? historyReference.getSessionId()
@@ -87,6 +95,15 @@ public class DefaultHistoryReferencesTableEntry extends AbstractHistoryReference
         rtt = hasColumn(sortedColumns, Column.RTT) ? historyReference.getRtt() : null;
 
         uri = hasColumn(sortedColumns, Column.URL) ? historyReference.getURI().toString() : null;
+
+        hostname =
+                hasColumn(sortedColumns, Column.HOSTNAME)
+                        ? new String(historyReference.getURI().getRawHost())
+                        : null;
+        pathAndQuery =
+                hasColumn(sortedColumns, Column.PATH_AND_QUERY)
+                        ? historyReference.getURI().getEscapedPathQuery()
+                        : null;
         timeSentMillis =
                 hasColumn(sortedColumns, Column.REQUEST_TIMESTAMP)
                         ? new Date(historyReference.getTimeSentMillis())
@@ -136,12 +153,7 @@ public class DefaultHistoryReferencesTableEntry extends AbstractHistoryReference
     }
 
     private static boolean hasColumn(Column[] columns, Column column) {
-        for (int i = 0; i < columns.length; i++) {
-            if (column == columns[i]) {
-                return true;
-            }
-        }
-        return false;
+        return Arrays.stream(columns).anyMatch(value -> column == value);
     }
 
     @Override
@@ -152,6 +164,11 @@ public class DefaultHistoryReferencesTableEntry extends AbstractHistoryReference
     @Override
     public Integer getHistoryType() {
         return historyType;
+    }
+
+    @Override
+    public HrefTypeInfo getHistoryTypeInfo() {
+        return hrefTypeInfo;
     }
 
     @Override
@@ -167,6 +184,16 @@ public class DefaultHistoryReferencesTableEntry extends AbstractHistoryReference
     @Override
     public String getUri() {
         return uri;
+    }
+
+    @Override
+    public String getHostName() {
+        return hostname;
+    }
+
+    @Override
+    public String getPathAndQuery() {
+        return pathAndQuery;
     }
 
     @Override

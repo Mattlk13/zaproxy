@@ -85,6 +85,10 @@
 // ZAP: 2019/06/05 Normalise format/style.
 // ZAP: 2019/07/25 Relocate null check to be earlier in hookScannerHook(scan) [LGTM issue].
 // ZAP: 2019/08/19 Validate menu and main frame in EDT.
+// ZAP: 2019/09/30 Use instance variable for view checks.
+// ZAP: 2020/05/14 Hook HttpSenderListener when starting single extension.
+// ZAP: 2020/08/27 Added support for plugable variants
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.extension;
 
 import java.awt.Component;
@@ -101,7 +105,8 @@ import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import org.apache.commons.lang.exception.ExceptionUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.CommandLine;
 import org.parosproxy.paros.common.AbstractParam;
 import org.parosproxy.paros.control.Control;
@@ -113,6 +118,7 @@ import org.parosproxy.paros.core.proxy.ProxyListener;
 import org.parosproxy.paros.core.proxy.ProxyServer;
 import org.parosproxy.paros.core.scanner.Scanner;
 import org.parosproxy.paros.core.scanner.ScannerHook;
+import org.parosproxy.paros.core.scanner.Variant;
 import org.parosproxy.paros.db.Database;
 import org.parosproxy.paros.db.DatabaseException;
 import org.parosproxy.paros.db.DatabaseUnsupportedException;
@@ -147,7 +153,7 @@ public class ExtensionLoader {
     private Model model = null;
 
     private View view = null;
-    private static final Logger logger = Logger.getLogger(ExtensionLoader.class);
+    private static final Logger logger = LogManager.getLogger(ExtensionLoader.class);
 
     private List<ProxyServer> proxyServers;
 
@@ -477,20 +483,26 @@ public class ExtensionLoader {
     }
 
     private void removeSiteMapListener(ExtensionHook hook) {
-        if (view != null) {
-            SiteMapPanel siteMapPanel = view.getSiteTreePanel();
-            List<SiteMapListener> listenerList = hook.getSiteMapListenerList();
-            for (SiteMapListener listener : listenerList) {
-                try {
-                    if (listener != null) {
-                        siteMapPanel.removeSiteMapListener(listener);
-                    }
+        if (!hasView()) {
+            return;
+        }
 
-                } catch (Exception e) {
-                    logger.error(e.getMessage(), e);
+        SiteMapPanel siteMapPanel = view.getSiteTreePanel();
+        List<SiteMapListener> listenerList = hook.getSiteMapListenerList();
+        for (SiteMapListener listener : listenerList) {
+            try {
+                if (listener != null) {
+                    siteMapPanel.removeSiteMapListener(listener);
                 }
+
+            } catch (Exception e) {
+                logger.error(e.getMessage(), e);
             }
         }
+    }
+
+    private boolean hasView() {
+        return view != null;
     }
 
     // ZAP: method called by the scanner to load all scanner hooks.
@@ -753,7 +765,7 @@ public class ExtensionLoader {
             Extension extension = getExtension(i);
             try {
                 extension.start();
-                if (view != null) {
+                if (hasView()) {
                     view.addSplashScreenLoadingCompletion(factorPerc);
                 }
 
@@ -770,7 +782,7 @@ public class ExtensionLoader {
     public void startLifeCycle() {
 
         // Percentages are passed into the calls as doubles
-        if (view != null) {
+        if (hasView()) {
             view.setSplashScreenLoadingCompletion(0.0);
         }
 
@@ -810,8 +822,10 @@ public class ExtensionLoader {
 
             hookContextDataFactories(ext, extHook);
             hookApiImplementors(ext, extHook);
+            hookHttpSenderListeners(ext, extHook);
+            hookVariant(ext, extHook);
 
-            if (view != null) {
+            if (hasView()) {
                 // no need to hook view if no GUI
                 hookView(ext, view, extHook);
                 hookMenu(view, extHook);
@@ -833,7 +847,7 @@ public class ExtensionLoader {
         hookPersistentConnectionListeners(proxy, extHook.getPersistentConnectionListener());
         hookConnectRequestProxyListeners(proxy, extHook.getConnectRequestProxyListeners());
 
-        if (view != null) {
+        if (hasView()) {
             hookSiteMapListeners(view.getSiteTreePanel(), extHook.getSiteMapListenerList());
         }
     }
@@ -888,8 +902,9 @@ public class ExtensionLoader {
                 hookContextDataFactories(ext, extHook);
                 hookApiImplementors(ext, extHook);
                 hookHttpSenderListeners(ext, extHook);
+                hookVariant(ext, extHook);
 
-                if (view != null) {
+                if (hasView()) {
                     EventQueue.invokeAndWait(
                             new Runnable() {
 
@@ -923,7 +938,7 @@ public class ExtensionLoader {
             }
         }
 
-        if (view != null) {
+        if (hasView()) {
             try {
                 EventQueue.invokeAndWait(
                         () -> {
@@ -988,6 +1003,21 @@ public class ExtensionLoader {
         }
     }
 
+    private void hookVariant(Extension extension, ExtensionHook extHook) {
+        for (Class<? extends Variant> variant : extHook.getVariants()) {
+            try {
+                // Try to create a new instance just to check its possible
+                variant.getDeclaredConstructor().newInstance();
+                Model.getSingleton().getVariantFactory().addVariant(variant);
+            } catch (Exception e) {
+                logger.error(
+                        "Error while adding a Variant from "
+                                + extension.getClass().getCanonicalName(),
+                        e);
+            }
+        }
+    }
+
     /**
      * Hook command line listener with the command line processor
      *
@@ -1020,7 +1050,7 @@ public class ExtensionLoader {
     }
 
     private void hookMenu(View view, ExtensionHook hook) {
-        if (view == null) {
+        if (!hasView()) {
             return;
         }
 
@@ -1084,7 +1114,7 @@ public class ExtensionLoader {
     }
 
     private void removeMenu(View view, ExtensionHook hook) {
-        if (view == null) {
+        if (!hasView()) {
             return;
         }
 
@@ -1166,7 +1196,7 @@ public class ExtensionLoader {
     }
 
     private void hookView(Extension extension, View view, ExtensionHook hook) {
-        if (view == null) {
+        if (!hasView()) {
             return;
         }
 
@@ -1217,7 +1247,7 @@ public class ExtensionLoader {
     }
 
     private void removeView(Extension extension, View view, ExtensionHook hook) {
-        if (view == null) {
+        if (!hasView()) {
             return;
         }
 
@@ -1268,19 +1298,19 @@ public class ExtensionLoader {
     }
 
     public void removeStatusPanel(AbstractPanel panel) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getWorkbench().removePanel(panel, WorkbenchPanel.PanelType.STATUS);
+        view.getWorkbench().removePanel(panel, WorkbenchPanel.PanelType.STATUS);
     }
 
     public void removeOptionsPanel(AbstractParamPanel panel) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getOptionsDialog("").removeParamPanel(panel);
+        view.getOptionsDialog("").removeParamPanel(panel);
     }
 
     public void removeOptionsParamSet(AbstractParam params) {
@@ -1288,67 +1318,67 @@ public class ExtensionLoader {
     }
 
     public void removeWorkPanel(AbstractPanel panel) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getWorkbench().removePanel(panel, WorkbenchPanel.PanelType.WORK);
+        view.getWorkbench().removePanel(panel, WorkbenchPanel.PanelType.WORK);
     }
 
     public void removePopupMenuItem(ExtensionPopupMenuItem popupMenuItem) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getPopupList().remove(popupMenuItem);
+        view.getPopupList().remove(popupMenuItem);
     }
 
     public void removeFileMenuItem(JMenuItem menuItem) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getMainFrame().getMainMenuBar().getMenuFile().remove(menuItem);
+        view.getMainFrame().getMainMenuBar().getMenuFile().remove(menuItem);
     }
 
     public void removeEditMenuItem(JMenuItem menuItem) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getMainFrame().getMainMenuBar().getMenuEdit().remove(menuItem);
+        view.getMainFrame().getMainMenuBar().getMenuEdit().remove(menuItem);
     }
 
     public void removeViewMenuItem(JMenuItem menuItem) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getMainFrame().getMainMenuBar().getMenuView().remove(menuItem);
+        view.getMainFrame().getMainMenuBar().getMenuView().remove(menuItem);
     }
 
     public void removeToolsMenuItem(JMenuItem menuItem) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getMainFrame().getMainMenuBar().getMenuTools().remove(menuItem);
+        view.getMainFrame().getMainMenuBar().getMenuTools().remove(menuItem);
     }
 
     public void removeHelpMenuItem(JMenuItem menuItem) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getMainFrame().getMainMenuBar().getMenuHelp().remove(menuItem);
+        view.getMainFrame().getMainMenuBar().getMenuHelp().remove(menuItem);
     }
 
     public void removeReportMenuItem(JMenuItem menuItem) {
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             return;
         }
 
-        View.getSingleton().getMainFrame().getMainMenuBar().getMenuReport().remove(menuItem);
+        view.getMainFrame().getMainMenuBar().getMenuReport().remove(menuItem);
     }
 
     /** Init all extensions */
@@ -1360,7 +1390,7 @@ public class ExtensionLoader {
             try {
                 extension.init();
                 extension.databaseOpen(Model.getSingleton().getDb());
-                if (view != null) {
+                if (hasView()) {
                     view.addSplashScreenLoadingCompletion(factorPerc);
                 }
 
@@ -1382,7 +1412,7 @@ public class ExtensionLoader {
             Extension extension = getExtension(i);
             try {
                 extension.initModel(model);
-                if (view != null) {
+                if (hasView()) {
                     view.addSplashScreenLoadingCompletion(factorPerc);
                 }
 
@@ -1398,7 +1428,7 @@ public class ExtensionLoader {
      * @param view the View that need to be applied
      */
     private void initViewAllExtension(final View view, double progressFactor) {
-        if (view == null) {
+        if (!hasView()) {
             return;
         }
 
@@ -1430,7 +1460,7 @@ public class ExtensionLoader {
             Extension extension = getExtension(i);
             try {
                 extension.initXML(session, options);
-                if (view != null) {
+                if (hasView()) {
                     view.addSplashScreenLoadingCompletion(factorPerc);
                 }
 
@@ -1505,11 +1535,22 @@ public class ExtensionLoader {
             }
         }
 
+        for (Class<? extends Variant> variant : hook.getVariants()) {
+            try {
+                model.getVariantFactory().removeVariant(variant);
+            } catch (Exception e) {
+                logger.error(
+                        "Error while removing a Variant from "
+                                + extension.getClass().getCanonicalName(),
+                        e);
+            }
+        }
+
         removeViewInEDT(extension, hook);
     }
 
     private void removeViewInEDT(final Extension extension, final ExtensionHook hook) {
-        if (view == null) {
+        if (!hasView()) {
             return;
         }
 

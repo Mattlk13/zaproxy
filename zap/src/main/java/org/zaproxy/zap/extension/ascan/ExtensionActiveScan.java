@@ -24,8 +24,6 @@ import java.awt.EventQueue;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.security.InvalidParameterException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -35,7 +33,8 @@ import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
 import org.apache.commons.configuration.ConfigurationException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.control.Control.Mode;
@@ -51,7 +50,6 @@ import org.parosproxy.paros.model.Model;
 import org.parosproxy.paros.model.Session;
 import org.parosproxy.paros.model.SiteNode;
 import org.parosproxy.paros.view.AbstractParamPanel;
-import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.extension.alert.ExtensionAlert;
 import org.zaproxy.zap.extension.help.ExtensionHelp;
 import org.zaproxy.zap.extension.script.ExtensionScript;
@@ -66,7 +64,7 @@ import org.zaproxy.zap.view.ZapMenuItem;
 public class ExtensionActiveScan extends ExtensionAdaptor
         implements SessionChangedListener, CommandLineListener, ScanController<ActiveScan> {
 
-    private static final Logger logger = Logger.getLogger(ExtensionActiveScan.class);
+    private static final Logger logger = LogManager.getLogger(ExtensionActiveScan.class);
     private static final int ARG_SCAN_IDX = 0;
 
     public static final String NAME = "ExtensionActiveScan";
@@ -126,9 +124,9 @@ public class ExtensionActiveScan extends ExtensionAdaptor
         policyManager.init();
 
         if (Control.getSingleton().getMode().equals(Mode.attack)) {
-            if (View.isInitialised() && !this.getScannerParam().isAllowAttackOnStart()) {
+            if (hasView() && !this.getScannerParam().isAllowAttackOnStart()) {
                 // Disable attack mode for safeties sake (when running with the UI)
-                View.getSingleton().getMainFrame().getMainToolbarPanel().setMode(Mode.standard);
+                getView().getMainFrame().getMainToolbarPanel().setMode(Mode.standard);
             } else {
                 // Needed to make sure the attackModeScanner starts up
                 this.attackModeScanner.sessionModeChanged(Control.getSingleton().getMode());
@@ -153,7 +151,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
             extensionHook.getHookView().addOptionPanel(getOptionsVariantPanel());
 
             extensionHook.getHookView().addMainToolBarComponent(this.getPolicyButton());
-            View.getSingleton()
+            getView()
                     .getMainFrame()
                     .getMainFooterPanel()
                     .addFooterToolbarRightLabel(attackModeScanner.getScanStatus().getCountLabel());
@@ -286,7 +284,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
         }
 
         int id = this.ascanController.startScan(name, target, user, contextSpecificObjects);
-        if (View.isInitialised()) {
+        if (hasView()) {
             ActiveScan scanner = this.ascanController.getScan(id);
             scanner.addScannerListener(getActiveScanPanel()); // So the UI get updated
             this.getActiveScanPanel().scannerStarted(scanner);
@@ -416,7 +414,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
 
     private void sessionChangedEventHandler(Session session) {
         // The scans are stopped in sessionAboutToChange(..)
-        if (View.isInitialised()) {
+        if (hasView()) {
             this.getActiveScanPanel().reset();
         }
 
@@ -541,7 +539,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
         this.ascanController.reset();
         this.attackModeScanner.stop();
 
-        if (View.isInitialised()) {
+        if (hasView()) {
             this.getActiveScanPanel().reset();
             if (customScanDialog != null) {
                 customScanDialog.reset();
@@ -560,18 +558,8 @@ public class ExtensionActiveScan extends ExtensionAdaptor
     }
 
     @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-
-        } catch (MalformedURLException e) {
-            return null;
-        }
-    }
-
-    @Override
     public void sessionScopeChanged(Session session) {
-        if (View.isInitialised()) {
+        if (hasView()) {
             this.getActiveScanPanel().sessionScopeChanged(session);
         }
         this.attackModeScanner.sessionScopeChanged(session);
@@ -582,7 +570,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
         if (Mode.safe.equals(mode)) {
             this.ascanController.stopAllScans();
         }
-        if (View.isInitialised()) {
+        if (hasView()) {
             getMenuItemCustomScan().setEnabled(!Mode.safe.equals(mode));
             this.getActiveScanPanel().sessionModeChanged(mode);
         }
@@ -593,7 +581,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
     public void destroy() {
         this.ascanController.stopAllScans();
 
-        if (View.isInitialised()) {
+        if (hasView()) {
             this.getActiveScanPanel().reset();
         }
     }
@@ -628,7 +616,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
                             this,
                             tabs,
                             this.customScanPanels,
-                            View.getSingleton().getMainFrame(),
+                            getView().getMainFrame(),
                             new Dimension(700, 500));
         }
         if (customScanDialog.isVisible()) {
@@ -659,10 +647,10 @@ public class ExtensionActiveScan extends ExtensionAdaptor
 
     public void showPolicyManagerDialog() {
         if (policyManagerDialog == null) {
-            policyManagerDialog = new PolicyManagerDialog(View.getSingleton().getMainFrame());
+            policyManagerDialog = new PolicyManagerDialog(getView().getMainFrame());
             policyManagerDialog.init(this);
         }
-        // The policy names _may_ have changed, eg via the api
+        // The policy names _may_ have changed, e.g. via the api
         policyManagerDialog.policyNamesChanged();
         policyManagerDialog.setVisible(true);
     }
@@ -703,7 +691,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
     @Override
     public void pauseScan(int id) {
         ascanController.pauseScan(id);
-        if (View.isInitialised()) {
+        if (hasView()) {
             // Update the UI in case this was initiated from the API
             this.getActiveScanPanel().updateScannerUI();
         }
@@ -712,7 +700,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
     @Override
     public void resumeScan(int id) {
         ascanController.resumeScan(id);
-        if (View.isInitialised()) {
+        if (hasView()) {
             // Update the UI in case this was initiated from the API
             this.getActiveScanPanel().updateScannerUI();
         }
@@ -727,7 +715,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
     @Override
     public void pauseAllScans() {
         ascanController.pauseAllScans();
-        if (View.isInitialised()) {
+        if (hasView()) {
             // Update the UI in case this was initiated from the API
             this.getActiveScanPanel().updateScannerUI();
         }
@@ -736,7 +724,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
     @Override
     public void resumeAllScans() {
         ascanController.removeAllScans();
-        if (View.isInitialised()) {
+        if (hasView()) {
             // Update the UI in case this was initiated from the API
             this.getActiveScanPanel().updateScannerUI();
         }
@@ -764,7 +752,7 @@ public class ExtensionActiveScan extends ExtensionAdaptor
 
     public int registerScan(ActiveScan scanner) {
         int id = ascanController.registerScan(scanner);
-        if (View.isInitialised()) {
+        if (hasView()) {
             // Update the UI in case this was initiated from the API
             scanner.addScannerListener(getActiveScanPanel()); // So the UI get updated
             this.getActiveScanPanel().scannerStarted(scanner);

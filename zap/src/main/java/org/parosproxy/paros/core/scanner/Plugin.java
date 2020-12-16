@@ -36,9 +36,11 @@
 package org.parosproxy.paros.core.scanner;
 
 import java.util.Date;
+import java.util.List;
 import org.apache.commons.configuration.Configuration;
 import org.parosproxy.paros.network.HttpMessage;
 import org.zaproxy.zap.control.AddOn;
+import org.zaproxy.zap.extension.alert.ExampleAlertProvider;
 import org.zaproxy.zap.model.Tech;
 import org.zaproxy.zap.model.TechSet;
 
@@ -47,7 +49,7 @@ import org.zaproxy.zap.model.TechSet;
  * AbstractHostPlugin}, {@link AbstractAppPlugin}, {@link AbstractAppParamPlugin} implement this
  * interface and is a good starting point for writing new plugins.
  */
-public interface Plugin extends Runnable {
+public interface Plugin extends Runnable, ExampleAlertProvider {
 
     public enum AlertThreshold {
         /**
@@ -211,7 +213,7 @@ public interface Plugin extends Runnable {
     void setDelayInMs(int delay);
 
     /**
-     * The alert threshold for this plugin, ie the level of certainty required to report an alert
+     * The alert threshold for this plugin, i.e. the level of certainty required to report an alert
      *
      * @param incDefault if the DEFAULT level should be returned as DEFAULT as opposed to the value
      *     of the default level
@@ -220,7 +222,7 @@ public interface Plugin extends Runnable {
     AlertThreshold getAlertThreshold(boolean incDefault);
 
     /**
-     * The alert threshold for this plugin, ie the level of certainty required to report an alert.
+     * The alert threshold for this plugin, i.e. the level of certainty required to report an alert.
      * The DEFAULT level will not be returned, instead the value of the default level will be
      * returned, if relevant.
      *
@@ -229,7 +231,7 @@ public interface Plugin extends Runnable {
     AlertThreshold getAlertThreshold();
 
     /**
-     * Set the alert threshold for this plugin, ie the level of certainty required to report an
+     * Set the alert threshold for this plugin, i.e. the level of certainty required to report an
      * alert
      *
      * @param level The alert threshold to set for this plugin
@@ -237,8 +239,8 @@ public interface Plugin extends Runnable {
     void setAlertThreshold(AlertThreshold level);
 
     /**
-     * Set the default alert threshold for this plugin, ie the level of certainty required to report
-     * an alert
+     * Set the default alert threshold for this plugin, i.e. the level of certainty required to
+     * report an alert
      *
      * @param level The alert threshold to set for this plugin
      */
@@ -272,7 +274,7 @@ public interface Plugin extends Runnable {
     AttackStrength getAttackStrength();
 
     /**
-     * Set the attack strength for this plugin, ie the relative number of requests the plugin will
+     * Set the attack strength for this plugin, i.e. the relative number of requests the plugin will
      * make against a given target.
      *
      * @param level The alert threshold to set for this plugin
@@ -280,8 +282,8 @@ public interface Plugin extends Runnable {
     void setAttackStrength(AttackStrength level);
 
     /**
-     * Set the default attack strength for this plugin, ie the relative number of attacks that will
-     * be performed
+     * Set the default attack strength for this plugin, i.e. the relative number of attacks that
+     * will be performed
      *
      * @param strength The attack strength to set for this plugin
      */
@@ -372,4 +374,14 @@ public interface Plugin extends Runnable {
      * @since 2.4.0
      */
     AddOn.Status getStatus();
+
+    /**
+     * Gets a list of example alerts that the plugin can raise.
+     *
+     * @since 2.10.0
+     */
+    @Override
+    default List<Alert> getExampleAlerts() {
+        return null;
+    }
 }

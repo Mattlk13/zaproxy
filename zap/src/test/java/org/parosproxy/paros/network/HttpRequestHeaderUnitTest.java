@@ -19,15 +19,20 @@
  */
 package org.parosproxy.paros.network;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.TreeSet;
 import org.apache.commons.httpclient.URI;
-import org.junit.Test;
+import org.apache.commons.httpclient.URIException;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /** Unit test for {@link HttpRequestHeader}. */
 public class HttpRequestHeaderUnitTest {
@@ -108,7 +113,7 @@ public class HttpRequestHeaderUnitTest {
         header.setCookieParams(cookies);
         // Then
         assertThat(header.getHeader(HttpHeader.COOKIE), is(equalTo("c1=v1")));
-        assertThat(header.getHeaders(HttpHeader.COOKIE), hasSize(1));
+        assertThat(header.getHeaderValues(HttpHeader.COOKIE), hasSize(1));
     }
 
     @Test
@@ -121,7 +126,7 @@ public class HttpRequestHeaderUnitTest {
         header.setCookieParams(cookies);
         // Then
         assertThat(header.getHeader(HttpHeader.COOKIE), is(equalTo("v3; c1=v1; c2=v2")));
-        assertThat(header.getHeaders(HttpHeader.COOKIE), hasSize(1));
+        assertThat(header.getHeaderValues(HttpHeader.COOKIE), hasSize(1));
     }
 
     @Test
@@ -133,7 +138,7 @@ public class HttpRequestHeaderUnitTest {
         header.setCookieParams(cookies);
         // Then
         assertThat(header.getHeader(HttpHeader.COOKIE), is(equalTo("v1")));
-        assertThat(header.getHeaders(HttpHeader.COOKIE), hasSize(1));
+        assertThat(header.getHeaderValues(HttpHeader.COOKIE), hasSize(1));
     }
 
     @Test
@@ -144,7 +149,7 @@ public class HttpRequestHeaderUnitTest {
         // When
         header.setCookieParams(cookies);
         // Then
-        assertThat(header.getHeaders(HttpHeader.COOKIE), is(nullValue()));
+        assertThat(header.getHeaderValues(HttpHeader.COOKIE), is(empty()));
     }
 
     @Test
@@ -155,19 +160,19 @@ public class HttpRequestHeaderUnitTest {
         // When
         header.setCookieParams(noCookies);
         // Then
-        assertThat(header.getHeaders(HttpHeader.COOKIE), is(nullValue()));
+        assertThat(header.getHeaderValues(HttpHeader.COOKIE), is(empty()));
     }
 
     @Test
     public void shouldRemoveCookieHeadersWhenSettingNoCookieTypeParams() {
         // Given
         HttpRequestHeader header = createRequestHeaderWithCookies();
-        TreeSet<HtmlParameter> paramsWithouCookies =
+        TreeSet<HtmlParameter> paramsWithoutCookies =
                 parameters(urlParam("p1", "v1"), formParam("p2", "v2"));
         // When
-        header.setCookieParams(paramsWithouCookies);
+        header.setCookieParams(paramsWithoutCookies);
         // Then
-        assertThat(header.getHeaders(HttpHeader.COOKIE), is(nullValue()));
+        assertThat(header.getHeaderValues(HttpHeader.COOKIE), is(empty()));
     }
 
     @Test
@@ -180,7 +185,53 @@ public class HttpRequestHeaderUnitTest {
         header.setCookieParams(cookies);
         // Then
         assertThat(header.getHeader(HttpHeader.COOKIE), is(equalTo("v3; c1=v1; c2=v2")));
-        assertThat(header.getHeaders(HttpHeader.COOKIE), hasSize(1));
+        assertThat(header.getHeaderValues(HttpHeader.COOKIE), hasSize(1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "http://example.org/css/file.ext", // In directory path
+                "http://ericsson.com/", // In domain name
+                "https://example.css", // In domain extension (TLD)
+                "https://example.css/dir/file.ext", // In domain extension (TLD)
+                "https://example.org/dir/file?foo=bar&thing=css", // In parameter value
+                "http://example.org/css/file.ext?foo=bar&type=.css", // In parameter value including
+                // period
+                "http://example.org/css/file.ext?foo=bar&thing=styles.css", // In parameter value,
+                // plausible filename
+                "https://example.org/dir/file?foo=bar&css=file.ext" // In parameter name
+            })
+    public void isCssShouldReturnFalseWhenUrlDoesNotIndicateCss(String url) {
+        // Given
+        HttpRequestHeader reqHeader = createRequestHeader(url);
+        // When / Then
+        assertFalse(reqHeader.isCss());
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "http://example.org/styles.css", // In path
+                "http://example.org/assets/css/styles.css", // In deeper path
+                "http://example.org/css/styles.css?foo=bar", // In path, ignoring params
+                "http://example.org/css/styles.css?foo=bar&thing=.css", // In path, ignoring params
+            })
+    public void isCssShouldReturnTrueWhenUrlIndicatesCss(String url) {
+        // Given
+        HttpRequestHeader reqHeader = createRequestHeader(url);
+        // When / Then
+        assertTrue(reqHeader.isCss());
+    }
+
+    private static HttpRequestHeader createRequestHeader(String url) {
+        HttpRequestHeader hrh = new HttpRequestHeader();
+        try {
+            hrh.setURI(new URI(url, false));
+        } catch (URIException | NullPointerException hmhe) {
+            // Should not happen
+        }
+        return hrh;
     }
 
     private static HtmlParameter urlParam(String name, String value) {

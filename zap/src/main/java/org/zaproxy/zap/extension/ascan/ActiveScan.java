@@ -30,7 +30,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import javax.swing.DefaultListModel;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.core.scanner.Alert;
 import org.parosproxy.paros.core.scanner.HostProcess;
 import org.parosproxy.paros.core.scanner.ScannerListener;
@@ -63,6 +64,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     private String displayName = null;
     private int progress = 0;
     private ActiveScanTableModel messagesTableModel = new ActiveScanTableModel();
+    private FilterMessageTableModel filterMessageTableModel = new FilterMessageTableModel();
     private SiteNode startNode = null;
     private ResponseCountSnapshot rcTotals = new ResponseCountSnapshot();
     private ResponseCountSnapshot rcLastSnapshot = new ResponseCountSnapshot();
@@ -78,7 +80,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> schedHandle;
 
-    private static final Logger log = Logger.getLogger(ActiveScan.class);
+    private static final Logger log = LogManager.getLogger(ActiveScan.class);
 
     @Deprecated
     public ActiveScan(
@@ -234,6 +236,11 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
         }
     }
 
+    @Override
+    public void filteredMessage(HttpMessage msg, String reason) {
+        filterMessageTableModel.addResult(msg.getRequestHeader().getURI().toString(), reason);
+    }
+
     /**
      * @deprecated (2.5.0) No longer used/needed, the request count is automatically
      *     updated/maintained by {@link HostProcess}.
@@ -254,6 +261,10 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     // @Override
     public DefaultListModel<HistoryReference> getList() {
         return null;
+    }
+
+    FilterMessageTableModel getFilterMessageTableModel() {
+        return filterMessageTableModel;
     }
 
     public ActiveScanTableModel getMessagesTableModel() {

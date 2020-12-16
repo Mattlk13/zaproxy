@@ -22,8 +22,6 @@ package org.zaproxy.zap.extension.brk;
 import java.awt.Component;
 import java.awt.EventQueue;
 import java.awt.event.KeyEvent;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -32,7 +30,8 @@ import java.util.Map;
 import javax.swing.JList;
 import javax.swing.JTree;
 import javax.swing.tree.TreePath;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.control.Control.Mode;
@@ -45,7 +44,6 @@ import org.parosproxy.paros.model.HistoryReference;
 import org.parosproxy.paros.model.OptionsParam;
 import org.parosproxy.paros.model.Session;
 import org.parosproxy.paros.model.SiteNode;
-import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.extension.brk.impl.http.HttpBreakpointManagementDaemonImpl;
 import org.zaproxy.zap.extension.brk.impl.http.HttpBreakpointMessage;
 import org.zaproxy.zap.extension.brk.impl.http.HttpBreakpointMessage.Location;
@@ -70,7 +68,7 @@ public class ExtensionBreak extends ExtensionAdaptor
 
     public static final String NAME = "ExtensionBreak";
 
-    private static final Logger logger = Logger.getLogger(ExtensionBreak.class);
+    private static final Logger logger = LogManager.getLogger(ExtensionBreak.class);
 
     private BreakPanel breakPanel = null;
     private ProxyListenerBreak proxyListener = null;
@@ -144,6 +142,7 @@ public class ExtensionBreak extends ExtensionAdaptor
             breakpointMessageHandler = new BreakpointMessageHandler2(breakPanel);
             breakpointMessageHandler.setEnabledBreakpoints(
                     getBreakpointsModel().getBreakpointsEnabledList());
+            breakpointMessageHandler.setEnabledIgnoreRules(breakPanel.getIgnoreRulesEnableList());
             breakpointManagementInterface = breakPanel;
 
             ExtensionHookView pv = extensionHook.getHookView();
@@ -177,6 +176,8 @@ public class ExtensionBreak extends ExtensionAdaptor
 
             breakpointMessageHandler = new BreakpointMessageHandler2(breakpointManagementInterface);
             breakpointMessageHandler.setEnabledBreakpoints(
+                    new ArrayList<BreakpointMessageInterface>());
+            breakpointMessageHandler.setEnabledIgnoreRules(
                     new ArrayList<BreakpointMessageInterface>());
         }
     }
@@ -487,7 +488,7 @@ public class ExtensionBreak extends ExtensionAdaptor
                         public void actionPerformed(java.awt.event.ActionEvent e) {
                             // Check to see if anything is selected in the main tabs
                             String url = "";
-                            Component c = View.getSingleton().getMainFrame().getFocusOwner();
+                            Component c = getView().getMainFrame().getFocusOwner();
                             if (c != null) {
                                 if (c instanceof JList) {
                                     // Handles the history list and similar
@@ -565,15 +566,6 @@ public class ExtensionBreak extends ExtensionAdaptor
     @Override
     public String getDescription() {
         return Constant.messages.getString("brk.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     @Override
@@ -686,6 +678,9 @@ public class ExtensionBreak extends ExtensionAdaptor
 
         breakPanel.setButtonsLocation(options.getViewParam().getBrkPanelViewOption());
         breakPanel.setButtonMode(options.getParamSet(BreakpointsParam.class).getButtonMode());
+        breakPanel.setShowIgnoreFilesButtons(
+                options.getParamSet(BreakpointsParam.class).isShowIgnoreFilesButtons());
+        breakPanel.updateIgnoreFileTypesRegexs();
     }
 
     @Override

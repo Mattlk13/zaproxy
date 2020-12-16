@@ -19,22 +19,20 @@
  */
 package org.zaproxy.zap.control;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.Assert.assertThat;
 
 import java.io.StringReader;
 import java.util.List;
 import org.apache.commons.configuration.ConfigurationException;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.zaproxy.zap.control.AddOnCollection.Platform;
 import org.zaproxy.zap.utils.ZapXmlConfiguration;
 
-@RunWith(MockitoJUnitRunner.class)
+/** Unit test for {@link AddOnCollection}. */
 public class AddOnCollectionUnitTest {
 
     private ZapXmlConfiguration configA;
@@ -109,6 +107,7 @@ public class AddOnCollectionUnitTest {
                     + "		<url>https://zap-extensions.googlecode.com/files/ddd-release-3.zap</url>\n"
                     + "		<size>3456</size>\n"
                     + "		<not-before-version>2.4.0</not-before-version>\n"
+                    + "		<date>2020-05-22</date>\n"
                     + "	</addon_ddd>\n"
                     + "</ZAP>";
 
@@ -140,7 +139,7 @@ public class AddOnCollectionUnitTest {
                     + "	</addon_bbb>\n"
                     + "</ZAP>";
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         configA = new ZapXmlConfiguration();
         configA.setDelimiterParsingDisabled(true);
@@ -257,6 +256,17 @@ public class AddOnCollectionUnitTest {
         assertThat(addOnCollection.getAddOn("AddOn3"), is(notNullValue()));
         assertThat(addOnCollection.getAddOn("AddOn8"), is(notNullValue()));
         assertThat(addOnCollection.getAddOn("AddOn9"), is(notNullValue()));
+    }
+
+    @Test
+    public void shouldHaveReleaseDateInAddOn() throws Exception {
+        // Given
+        AddOnCollection coll = new AddOnCollection(configA, Platform.windows);
+        AddOn addOn = coll.getAddOn("ddd");
+        // When
+        String releaseDate = addOn.getReleaseDate();
+        // Then
+        assertThat(releaseDate, is(equalTo("2020-05-22")));
     }
 
     private ZapXmlConfiguration createConfiguration(String file) throws ConfigurationException {

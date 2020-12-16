@@ -31,7 +31,8 @@ import javax.swing.ImageIcon;
 import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 import javax.swing.table.TableColumn;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.JXTable;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.extension.AbstractPanel;
@@ -55,7 +56,7 @@ public class BreakpointsPanel extends AbstractPanel {
     private final Preferences preferences;
     private final String prefnzPrefix = this.getClass().getSimpleName() + ".";
 
-    private static Logger log = Logger.getLogger(BreakpointsPanel.class);
+    private static Logger log = LogManager.getLogger(BreakpointsPanel.class);
 
     public BreakpointsPanel(ExtensionBreak extension) {
         super();
@@ -96,7 +97,7 @@ public class BreakpointsPanel extends AbstractPanel {
             GridBagConstraints gridBagConstraints2 = new GridBagConstraints();
 
             // Better without this?
-            // jLabel.setText("Break Points:");
+            // jLabel.setText("Breakpoints:");
             gridBagConstraints1.gridx = 0;
             gridBagConstraints1.gridy = 0;
             gridBagConstraints1.insets = new java.awt.Insets(2, 2, 2, 2);

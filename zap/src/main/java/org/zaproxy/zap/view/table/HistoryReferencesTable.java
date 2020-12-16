@@ -35,7 +35,8 @@ import javax.swing.SortOrder;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.TableModel;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.JXTable;
 import org.jdesktop.swingx.action.AbstractActionExt;
 import org.jdesktop.swingx.renderer.DefaultTableRenderer;
@@ -51,6 +52,7 @@ import org.parosproxy.paros.network.HttpMalformedHeaderException;
 import org.parosproxy.paros.network.HttpMessage;
 import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.utils.PagingTableModel;
+import org.zaproxy.zap.view.HrefTypeInfo;
 import org.zaproxy.zap.view.ZapTable;
 import org.zaproxy.zap.view.messagecontainer.http.DefaultSelectableHistoryReferencesContainer;
 import org.zaproxy.zap.view.messagecontainer.http.SelectableHistoryReferencesContainer;
@@ -59,6 +61,7 @@ import org.zaproxy.zap.view.renderer.SizeBytesStringValue;
 import org.zaproxy.zap.view.renderer.TimeDurationStringValue;
 import org.zaproxy.zap.view.table.HistoryReferencesTableModel.Column;
 import org.zaproxy.zap.view.table.decorator.AlertRiskTableCellItemIconHighlighter;
+import org.zaproxy.zap.view.table.decorator.HrefTypeInfoIconHighlighter;
 import org.zaproxy.zap.view.table.decorator.NoteTableCellItemIconHighlighter;
 
 /**
@@ -69,10 +72,11 @@ public class HistoryReferencesTable extends ZapTable {
 
     private static final long serialVersionUID = -6988769961088738602L;
 
-    private static final Logger LOGGER = Logger.getLogger(HistoryReferencesTable.class);
+    private static final Logger LOGGER = LogManager.getLogger(HistoryReferencesTable.class);
 
     private static final int MAXIMUM_ROWS_FOR_TABLE_CONFIG = 75;
 
+    private final DisplayMessageOnSelectionValueChange defaultSelectionListener;
     private int maximumRowsForTableConfig;
 
     public HistoryReferencesTable() {
@@ -106,8 +110,10 @@ public class HistoryReferencesTable extends ZapTable {
         setRowSelectionAllowed(true);
 
         if (useDefaultSelectionListener) {
-            getSelectionModel()
-                    .addListSelectionListener(new DisplayMessageOnSelectionValueChange());
+            defaultSelectionListener = new DisplayMessageOnSelectionValueChange();
+            getSelectionModel().addListSelectionListener(defaultSelectionListener);
+        } else {
+            defaultSelectionListener = null;
         }
 
         setComponentPopupMenu(new CustomPopupMenu());
@@ -128,6 +134,17 @@ public class HistoryReferencesTable extends ZapTable {
 
     protected void displayMessage(final HttpMessage msg) {
         View.getSingleton().displayMessage(msg);
+    }
+
+    /**
+     * Gets the default selection listener, responsible to display the selected message in the
+     * Request/Response tabs.
+     *
+     * @return the default selection listener, or {@code null} if not in use.
+     * @since 2.9.0
+     */
+    protected DisplayMessageOnSelectionValueChange getDefaultSelectionListener() {
+        return defaultSelectionListener;
     }
 
     public HistoryReference getSelectedHistoryReference() {
@@ -228,23 +245,42 @@ public class HistoryReferencesTable extends ZapTable {
 
     protected class DisplayMessageOnSelectionValueChange implements ListSelectionListener {
 
+        private boolean enabled;
+
+        public DisplayMessageOnSelectionValueChange() {
+            enabled = true;
+        }
+
+        /**
+         * Sets whether or not the selected message should be displayed.
+         *
+         * @param enabled {@code true} if the selected message should be displayed, {@code false}
+         *     otherwise.
+         * @since 2.9.0
+         */
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
         @Override
         public void valueChanged(final ListSelectionEvent evt) {
-            if (!evt.getValueIsAdjusting()) {
-                HistoryReference hRef = getSelectedHistoryReference();
-                if (hRef == null) {
-                    return;
-                }
+            if (!enabled || evt.getValueIsAdjusting()) {
+                return;
+            }
 
-                boolean focusOwner = isFocusOwner();
-                try {
-                    displayMessage(hRef.getHttpMessage());
-                } catch (HttpMalformedHeaderException | DatabaseException e) {
-                    LOGGER.error(e.getMessage(), e);
-                } finally {
-                    if (focusOwner) {
-                        requestFocusInWindow();
-                    }
+            HistoryReference hRef = getSelectedHistoryReference();
+            if (hRef == null) {
+                return;
+            }
+
+            boolean focusOwner = isFocusOwner();
+            try {
+                displayMessage(hRef.getHttpMessage());
+            } catch (HttpMalformedHeaderException | DatabaseException e) {
+                LOGGER.error(e.getMessage(), e);
+            } finally {
+                if (focusOwner) {
+                    requestFocusInWindow();
                 }
             }
         }
@@ -346,6 +382,15 @@ public class HistoryReferencesTable extends ZapTable {
                     columnExt, hRefModel.getColumnIndex(Column.SIZE_RESPONSE_HEADER), model);
             installSizeBytesRenderer(
                     columnExt, hRefModel.getColumnIndex(Column.SIZE_RESPONSE_BODY), model);
+
+            final int hrefTypeInfoColumnIndex = hRefModel.getColumnIndex(Column.HREF_TYPE_INFO);
+            if (hrefTypeInfoColumnIndex != -1) {
+                if (columnExt.getModelIndex() == hrefTypeInfoColumnIndex
+                        && model.getColumnClass(hrefTypeInfoColumnIndex) == HrefTypeInfo.class) {
+                    columnExt.setHighlighters(
+                            new HrefTypeInfoIconHighlighter(hrefTypeInfoColumnIndex));
+                }
+            }
         }
 
         protected void installSizeBytesRenderer(

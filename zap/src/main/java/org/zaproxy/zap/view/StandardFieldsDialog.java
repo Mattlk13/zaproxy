@@ -59,7 +59,8 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.text.JTextComponent;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.extension.AbstractDialog;
 import org.parosproxy.paros.model.SiteNode;
@@ -81,7 +82,7 @@ import org.zaproxy.zap.view.widgets.ContextSelectComboBox;
  */
 public abstract class StandardFieldsDialog extends AbstractDialog {
 
-    private static final Logger logger = Logger.getLogger(StandardFieldsDialog.class);
+    private static final Logger logger = LogManager.getLogger(StandardFieldsDialog.class);
 
     private static final long serialVersionUID = 1L;
     private static final EmptyBorder FULL_BORDER = new EmptyBorder(8, 8, 8, 8);
@@ -332,10 +333,10 @@ public abstract class StandardFieldsDialog extends AbstractDialog {
                 contentPanel.add(getHelpButton(helpIndex), LayoutHelper.getGBC(0, 1, 1, 0.0D));
             }
             contentPanel.add(new JLabel(), LayoutHelper.getGBC(1, 1, 1, 1.0D)); // spacer
+            contentPanel.add(getSaveButton(), LayoutHelper.getGBC(2, 1, 1, 0.0D));
             if (hasCancelSaveButtons()) {
-                contentPanel.add(getCancelButton(), LayoutHelper.getGBC(2, 1, 1, 0.0D));
+                contentPanel.add(getCancelButton(), LayoutHelper.getGBC(3, 1, 1, 0.0D));
             }
-            contentPanel.add(getSaveButton(), LayoutHelper.getGBC(3, 1, 1, 0.0D));
         } else {
             contentPanel.add(
                     component, LayoutHelper.getGBC(0, 0, 4 + extraButtons.length, 1.0D, 1.0D));
@@ -343,15 +344,15 @@ public abstract class StandardFieldsDialog extends AbstractDialog {
                 contentPanel.add(getHelpButton(helpIndex), LayoutHelper.getGBC(0, 1, 1, 0.0D));
             }
             contentPanel.add(new JLabel(), LayoutHelper.getGBC(1, 1, 1, 1.0D)); // spacer
-            if (hasCancelSaveButtons()) {
-                contentPanel.add(getCancelButton(), LayoutHelper.getGBC(2, 1, 1, 0.0D));
-            }
+            contentPanel.add(getSaveButton(), LayoutHelper.getGBC(2, 1, 1, 0.0D));
             int x = 3;
             for (JButton button : extraButtons) {
                 contentPanel.add(button, LayoutHelper.getGBC(x, 1, 1, 0.0D));
                 x++;
             }
-            contentPanel.add(getSaveButton(), LayoutHelper.getGBC(x, 1, 1, 0.0D));
+            if (hasCancelSaveButtons()) {
+                contentPanel.add(getCancelButton(), LayoutHelper.getGBC(x, 1, 1, 0.0D));
+            }
         }
     }
 
@@ -1535,13 +1536,10 @@ public abstract class StandardFieldsDialog extends AbstractDialog {
     private static String getNodeText(SiteNode node) {
         if (node != null && node.getHistoryReference() != null) {
             String url = node.getHistoryReference().getURI().toString();
-            if (node.isLeaf() && url.endsWith("/")) {
-                // String off the slash so we don't match a non leaf
+            if (!node.isLeaf() && url.endsWith("/")) {
+                // Strip off the slash so we don't match a leaf
                 // node with the same name
                 url = url.substring(0, url.length() - 1);
-            } else if (!node.isLeaf() && !url.endsWith("/")) {
-                // Add the slash to show its a non leaf node
-                url = url + "/";
             }
             return url;
         }

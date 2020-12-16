@@ -24,8 +24,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Writer;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
@@ -53,7 +51,8 @@ import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.tree.TreeNode;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdesktop.swingx.JXTable;
 import org.parosproxy.paros.CommandLine;
 import org.parosproxy.paros.Constant;
@@ -68,6 +67,7 @@ import org.parosproxy.paros.network.HttpMessage;
 import org.parosproxy.paros.network.HttpSender;
 import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.control.ExtensionFactory;
+import org.zaproxy.zap.extension.script.ScriptsCache.Configuration;
 
 public class ExtensionScript extends ExtensionAdaptor implements CommandLineListener {
 
@@ -102,8 +102,11 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
     public static final String SCRIPTS_DIR = "scripts";
     public static final String TEMPLATES_DIR = SCRIPTS_DIR + File.separator + "templates";
     private static final String LANG_ENGINE_SEP = " : ";
+
+    @Deprecated
     protected static final String SCRIPT_CONSOLE_HOME_PAGE =
             "https://github.com/zaproxy/zaproxy/wiki/ScriptConsole";
+
     protected static final String SCRIPT_NAME_ATT = "zap.script.name";
 
     public static final String TYPE_HTTP_SENDER = "httpsender";
@@ -128,7 +131,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
     private CommandLineArgument[] arguments = new CommandLineArgument[1];
     private static final int ARG_SCRIPT_IDX = 0;
 
-    private static final Logger logger = Logger.getLogger(ExtensionScript.class);
+    private static final Logger logger = LogManager.getLogger(ExtensionScript.class);
 
     /**
      * Flag that indicates if the scripts/templates should be loaded when a new script type is
@@ -169,7 +172,8 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
         if (se != null) {
             this.registerScriptEngineWrapper(new JavascriptEngineWrapper(se.getFactory()));
         } else {
-            logger.error("No Javascript/ECMAScript engine found");
+            logger.warn(
+                    "No default JavaScript/ECMAScript engine found, some scripts might no longer work.");
         }
     }
 
@@ -216,7 +220,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
 
         extensionHook.addCommandLine(getCommandLineArguments());
 
-        if (View.isInitialised()) {
+        if (hasView()) {
             extensionHook.getHookView().addOptionPanel(getOptionsScriptPanel());
         } else {
             // No GUI so add stdout as a writer
@@ -463,6 +467,20 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
     }
 
     public ScriptEngineWrapper getEngineWrapper(String name) {
+        ScriptEngineWrapper sew = getEngineWrapperImpl(name);
+        if (sew == null) {
+            throw new InvalidParameterException("No such engine: " + name);
+        }
+        return sew;
+    }
+
+    /**
+     * Gets the script engine with the given name.
+     *
+     * @param name the name of the script engine.
+     * @return the engine, or {@code null} if not available.
+     */
+    private ScriptEngineWrapper getEngineWrapperImpl(String name) {
         for (ScriptEngineWrapper sew : this.engineWrappers) {
             if (isSameScriptEngine(name, sew.getEngineName(), sew.getLanguageName())) {
                 return sew;
@@ -483,7 +501,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
             this.registerScriptEngineWrapper(dew);
             return dew;
         }
-        throw new InvalidParameterException("No such engine: " + name);
+        return null;
     }
 
     public String getEngineNameForExtension(String ext) {
@@ -583,7 +601,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
      * @param type the script type that will be removed
      * @since 2.4.0
      * @see #registerScriptType(ScriptType)
-     * @deprecated (TODO add version) Use {@link #removeScriptType(ScriptType)} instead.
+     * @deprecated (2.9.0) Use {@link #removeScriptType(ScriptType)} instead.
      */
     @Deprecated
     public void removeScripType(ScriptType type) {
@@ -598,7 +616,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
      * <p>The call to this method has no effect if the given type is not registered.
      *
      * @param type the script type that will be removed
-     * @since TODO add version
+     * @since 2.9.0
      * @see #registerScriptType(ScriptType)
      */
     public void removeScriptType(ScriptType type) {
@@ -624,15 +642,6 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
     @Override
     public String getDescription() {
         return Constant.messages.getString("script.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     private void refreshScript(ScriptWrapper script) {
@@ -692,6 +701,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
         if (script == null) {
             return null;
         }
+        setEngine(script);
         ScriptNode node = this.getTreeModel().addScript(script);
 
         for (ScriptEventListener listener : this.listeners) {
@@ -897,8 +907,8 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
                 .collect(ArrayList::new, (c, e) -> c.add(e.getName()), ArrayList::addAll);
     }
 
-    private static void informScriptsNotAdded(final List<String[]> scriptsNotAdded) {
-        if (!View.isInitialised() || scriptsNotAdded.isEmpty()) {
+    private void informScriptsNotAdded(final List<String[]> scriptsNotAdded) {
+        if (!hasView() || scriptsNotAdded.isEmpty()) {
             return;
         }
 
@@ -951,7 +961,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
                     @Override
                     public void run() {
                         JOptionPane.showMessageDialog(
-                                View.getSingleton().getMainFrame(),
+                                getView().getMainFrame(),
                                 optionPaneContents.toArray(),
                                 Constant.PROGRAM_NAME,
                                 JOptionPane.INFORMATION_MESSAGE);
@@ -1236,7 +1246,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
         }
         if (stdDir.exists()) {
             for (File f : stdDir.listFiles()) {
-                // Dont log errors on duplicates - 'local' templates should take presidence
+                // Dont log errors on duplicates - 'local' templates should take precedence
                 loadTemplate(f, type, engine, true);
             }
         }
@@ -1336,7 +1346,28 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
             // may well not have been registered at that stage
             script.setType(this.getScriptType(script.getTypeName()));
         }
+        setEngine(script);
         return script;
+    }
+
+    /**
+     * Sets the engine script to the given script, if not already set.
+     *
+     * <p>Scripts loaded from the configuration file might not have the engine set when used.
+     *
+     * <p>Does nothing if the engine script is not available.
+     *
+     * @param script the script to set the engine.
+     */
+    private void setEngine(ScriptWrapper script) {
+        if (script.getEngine() != null) {
+            return;
+        }
+        ScriptEngineWrapper sew = getEngineWrapperImpl(script.getEngineName());
+        if (sew == null) {
+            return;
+        }
+        script.setEngine(sew);
     }
 
     public List<ScriptWrapper> getScripts(String type) {
@@ -1424,10 +1455,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
      * @see ScriptEventListener#preInvoke(ScriptWrapper)
      */
     private void preInvokeScript(ScriptWrapper script) throws ScriptException {
-        if (script.getEngine() == null) {
-            // Scripts loaded from the configs my have loaded before all of the engines
-            script.setEngine(this.getEngineWrapper(script.getEngineName()));
-        }
+        setEngine(script);
 
         if (script.getEngine() == null) {
             throw new ScriptException("Failed to find script engine: " + script.getEngineName());
@@ -1560,7 +1588,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
      *
      * @param script the script that caused the error, must not be {@code null}.
      * @param error the error caused by the script, must not be {@code null}.
-     * @since TODO add version
+     * @since 2.9.0
      * @see #setEnabled(ScriptWrapper, boolean)
      * @see #setError(ScriptWrapper, String)
      * @see #handleScriptException(ScriptWrapper, Exception)
@@ -1909,6 +1937,18 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
     }
 
     /**
+     * Creates a scripts cache.
+     *
+     * @param <T> the target interface.
+     * @param config the cache configuration
+     * @return the scripts cache.
+     * @since TODO add version
+     */
+    public <T> ScriptsCache<T> createScriptsCache(Configuration<T> config) {
+        return new ScriptsCache<>(this, config);
+    }
+
+    /**
      * Gets the interface {@code class1} from the given {@code script}. Might return {@code null} if
      * the {@code script} does not implement the interface.
      *
@@ -1941,7 +1981,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
             T iface = script.getInterface(class1);
 
             if (iface != null) {
-                // the script wrapper has overriden the usual scripting mechanism
+                // the script wrapper has overridden the usual scripting mechanism
                 return iface;
             }
         } finally {
@@ -1960,7 +2000,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
     }
 
     /**
-     * Gets the interface {@code clasz} from the given {@code script}. Might return {@code null} if
+     * Gets the interface {@code clazz} from the given {@code script}. Might return {@code null} if
      * the {@code script} does not implement the interface.
      *
      * <p>First tries to get the interface directly from the {@code script} by calling the method
@@ -1969,7 +2009,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
      * Invocable.getInterface(Class)}.
      *
      * @param script the script that will be invoked
-     * @param clasz the interface that will be obtained from the script
+     * @param clazz the interface that will be obtained from the script
      * @return the interface implemented by the script, or {@code null} if the {@code script} does
      *     not implement the interface.
      * @throws ScriptException if the engine of the given {@code script} was not found.
@@ -1979,14 +2019,14 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
      * @see ScriptWrapper#getInterface(Class)
      * @see Invocable#getInterface(Class)
      */
-    public <T> T getInterfaceWithOutAddOnLoader(ScriptWrapper script, Class<T> clasz)
+    public <T> T getInterfaceWithOutAddOnLoader(ScriptWrapper script, Class<T> clazz)
             throws ScriptException, IOException {
-        T iface = script.getInterface(clasz);
+        T iface = script.getInterface(clazz);
         if (iface != null) {
-            // the script wrapper has overriden the usual scripting mechanism
+            // the script wrapper has overridden the usual scripting mechanism
             return iface;
         }
-        return invokeScriptWithOutAddOnLoader(script).getInterface(clasz);
+        return invokeScriptWithOutAddOnLoader(script).getInterface(clazz);
     }
 
     @Override
@@ -2032,7 +2072,7 @@ public class ExtensionScript extends ExtensionAdaptor implements CommandLineList
 
         this.loadScript(sw);
         this.addScript(sw);
-        if (!View.isInitialised()) {
+        if (!hasView()) {
             // Only invoke if run from the command line
             // if the GUI is present then its up to the user to invoke it
             this.invokeScript(sw);

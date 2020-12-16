@@ -22,8 +22,6 @@ package org.zaproxy.zap.extension.compare;
 import java.awt.EventQueue;
 import java.io.File;
 import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -38,7 +36,8 @@ import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.xml.transform.stream.StreamSource;
 import org.apache.commons.httpclient.URI;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control.Mode;
 import org.parosproxy.paros.db.DatabaseException;
@@ -55,8 +54,8 @@ import org.parosproxy.paros.model.Model;
 import org.parosproxy.paros.model.Session;
 import org.parosproxy.paros.model.SessionListener;
 import org.parosproxy.paros.network.HttpMalformedHeaderException;
-import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.utils.DesktopUtils;
+import org.zaproxy.zap.view.widgets.WritableFileChooser;
 
 public class ExtensionCompare extends ExtensionAdaptor
         implements SessionChangedListener, SessionListener {
@@ -66,7 +65,7 @@ public class ExtensionCompare extends ExtensionAdaptor
     private static final String CRLF = "\r\n";
     private JMenuItem menuCompare = null;
 
-    private static Logger log = Logger.getLogger(ExtensionCompare.class);
+    private static Logger log = LogManager.getLogger(ExtensionCompare.class);
 
     public ExtensionCompare() {
         super(NAME);
@@ -195,7 +194,7 @@ public class ExtensionCompare extends ExtensionAdaptor
                         return Constant.messages.getString("file.format.zap.session");
                     }
                 });
-        int rc = chooser.showOpenDialog(View.getSingleton().getMainFrame());
+        int rc = chooser.showOpenDialog(getView().getMainFrame());
         if (rc == JFileChooser.APPROVE_OPTION) {
             try {
                 file = chooser.getSelectedFile();
@@ -207,8 +206,7 @@ public class ExtensionCompare extends ExtensionAdaptor
 
                 // log.info("opening session file " + file.getAbsolutePath());
                 // WaitMessageDialog waitMessageDialog =
-                // View.getSingleton().getWaitMessageDialog("Loading session file.  Please wait
-                // ...");
+                // getView().getWaitMessageDialog("Loading session file.  Please wait...");
                 cmpModel.openSession(file, this);
 
                 // TODO support other implementations in the future
@@ -325,7 +323,7 @@ public class ExtensionCompare extends ExtensionAdaptor
                             DesktopUtils.openUrlInBrowser(outputFile.toURI());
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
-                            View.getSingleton()
+                            getView()
                                     .showMessageDialog(
                                             Constant.messages.getString(
                                                     "report.complete.warning",
@@ -347,7 +345,8 @@ public class ExtensionCompare extends ExtensionAdaptor
 
     private File getOutputFile() {
 
-        JFileChooser chooser = new JFileChooser(getModel().getOptionsParam().getUserDirectory());
+        JFileChooser chooser =
+                new WritableFileChooser(getModel().getOptionsParam().getUserDirectory());
         chooser.setFileFilter(
                 new FileNameExtensionFilter(
                         Constant.messages.getString("file.format.html"), "htm", "html"));
@@ -359,7 +358,6 @@ public class ExtensionCompare extends ExtensionAdaptor
             if (file == null) {
                 return file;
             }
-            getModel().getOptionsParam().setUserDirectory(chooser.getCurrentDirectory());
             String fileNameLc = file.getAbsolutePath().toLowerCase();
             if (!fileNameLc.endsWith(".htm") && !fileNameLc.endsWith(".html")) {
                 file = new File(file.getAbsolutePath() + ".html");
@@ -386,15 +384,6 @@ public class ExtensionCompare extends ExtensionAdaptor
     @Override
     public String getDescription() {
         return Constant.messages.getString("cmp.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     @Override

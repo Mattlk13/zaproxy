@@ -48,7 +48,8 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileFilter;
 import org.apache.commons.io.FileUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.bouncycastle.openssl.jcajce.JcaMiscPEMGenerator;
 import org.bouncycastle.util.io.pem.PemWriter;
 import org.parosproxy.paros.Constant;
@@ -58,6 +59,7 @@ import org.parosproxy.paros.view.AbstractParamPanel;
 import org.zaproxy.zap.utils.FontUtils;
 import org.zaproxy.zap.utils.ZapTextArea;
 import org.zaproxy.zap.utils.ZapXmlConfiguration;
+import org.zaproxy.zap.view.widgets.WritableFileChooser;
 
 public class DynamicSSLPanel extends AbstractParamPanel {
 
@@ -78,7 +80,7 @@ public class DynamicSSLPanel extends AbstractParamPanel {
     private KeyStore rootca;
     private ExtensionDynSSL extension;
 
-    private static final Logger logger = Logger.getLogger(DynamicSSLPanel.class);
+    private static final Logger logger = LogManager.getLogger(DynamicSSLPanel.class);
 
     /** Create the panel. */
     public DynamicSSLPanel(ExtensionDynSSL extension) {
@@ -488,7 +490,7 @@ public class DynamicSSLPanel extends AbstractParamPanel {
             logger.error("Illegal state! There seems to be no certificate available.");
             bt_save.setEnabled(false);
         }
-        final JFileChooser fc = new JFileChooser(System.getProperty("user.home"));
+        final JFileChooser fc = new WritableFileChooser(new File(System.getProperty("user.home")));
         fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
         fc.setMultiSelectionEnabled(false);
         fc.setSelectedFile(new File(OWASP_ZAP_ROOT_CA_FILENAME));

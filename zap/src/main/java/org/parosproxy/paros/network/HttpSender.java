@@ -80,6 +80,12 @@
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
 // ZAP: 2019/08/19 Reinstate proxy auth credentials when HTTP state is changed.
+// ZAP: 2019/09/17 Use remove() instead of set(null) on IN_LISTENER.
+// ZAP: 2019/09/25 Add option to disable cookies
+// ZAP: 2020/04/20 Configure if the names should be resolved or not (Issue 29).
+// ZAP: 2020/09/04 Added AUTHENTICATION_POLL_INITIATOR
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
+// ZAP: 2020/12/09 Set content encoding to the response body.
 package org.parosproxy.paros.network;
 
 import java.io.IOException;
@@ -113,7 +119,8 @@ import org.apache.commons.httpclient.params.HttpClientParams;
 import org.apache.commons.httpclient.params.HttpMethodParams;
 import org.apache.commons.httpclient.protocol.Protocol;
 import org.apache.commons.httpclient.protocol.ProtocolSocketFactory;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.zaproxy.zap.ZapGetMethod;
 import org.zaproxy.zap.ZapHttpConnectionManager;
 import org.zaproxy.zap.network.HttpRedirectionValidator;
@@ -138,8 +145,9 @@ public class HttpSender {
     public static final int TOKEN_GENERATOR_INITIATOR = 12;
     public static final int WEB_SOCKET_INITIATOR = 13;
     public static final int AUTHENTICATION_HELPER_INITIATOR = 14;
+    public static final int AUTHENTICATION_POLL_INITIATOR = 15;
 
-    private static Logger log = Logger.getLogger(HttpSender.class);
+    private static Logger log = LogManager.getLogger(HttpSender.class);
 
     private static ProtocolSocketFactory sslFactory = null;
     private static Protocol protocol = null;
@@ -177,6 +185,8 @@ public class HttpSender {
     private MultiThreadedHttpConnectionManager httpConnManager = null;
     private MultiThreadedHttpConnectionManager httpConnManagerProxy = null;
     private boolean followRedirect = false;
+    private boolean useCookies;
+    private boolean useGlobalState;
     private int initiator = -1;
 
     /*
@@ -236,6 +246,7 @@ public class HttpSender {
                         defaultUserAgent);
 
         setUseGlobalState(useGlobalState);
+        setUseCookies(true);
     }
 
     private void setClientsCookiePolicy(String policy) {
@@ -248,14 +259,33 @@ public class HttpSender {
     }
 
     private void checkState() {
-        if (param.isHttpStateEnabled()) {
-            client.setState(param.getHttpState());
-            clientViaProxy.setState(param.getHttpState());
-            setProxyAuth(clientViaProxy);
-            setClientsCookiePolicy(CookiePolicy.BROWSER_COMPATIBILITY);
-        } else {
+        if (!useCookies) {
+            resetState();
             setClientsCookiePolicy(CookiePolicy.IGNORE_COOKIES);
+        } else if (useGlobalState) {
+            if (param.isHttpStateEnabled()) {
+                client.setState(param.getHttpState());
+                clientViaProxy.setState(param.getHttpState());
+                setProxyAuth(clientViaProxy);
+                setClientsCookiePolicy(CookiePolicy.BROWSER_COMPATIBILITY);
+            } else {
+                setClientsCookiePolicy(CookiePolicy.IGNORE_COOKIES);
+            }
+        } else {
+            resetState();
+
+            setClientsCookiePolicy(CookiePolicy.BROWSER_COMPATIBILITY);
         }
+    }
+
+    private void resetState() {
+        HttpState state = new HttpState();
+        HttpState proxyState = new HttpState();
+
+        client.setState(state);
+        clientViaProxy.setState(proxyState);
+
+        setProxyAuth(clientViaProxy);
     }
 
     /**
@@ -269,14 +299,21 @@ public class HttpSender {
      * @since 2.8.0
      */
     public void setUseGlobalState(boolean enableGlobalState) {
-        if (enableGlobalState) {
-            checkState();
-        } else {
-            client.setState(new HttpState());
-            clientViaProxy.setState(new HttpState());
-            setProxyAuth(clientViaProxy);
-            setClientsCookiePolicy(CookiePolicy.BROWSER_COMPATIBILITY);
-        }
+        this.useGlobalState = enableGlobalState;
+
+        checkState();
+    }
+
+    /**
+     * Sets whether or not the requests sent should keep track of cookies.
+     *
+     * @param shouldUseCookies {@code true} if cookies should be used, {@code false} otherwise.
+     * @since 2.9.0
+     */
+    public void setUseCookies(boolean shouldUseCookies) {
+        this.useCookies = shouldUseCookies;
+
+        checkState();
     }
 
     private HttpClient createHttpClient() {
@@ -348,7 +385,7 @@ public class HttpSender {
         }
 
         if (this.initiator == CHECK_FOR_UPDATES_INITIATOR) {
-            // Use the 'strict' SSLConnector, ie one that performs all the usual cert checks
+            // Use the 'strict' SSLConnector, i.e. one that performs all the usual cert checks
             // The 'standard' one 'trusts' everything
             // This is to ensure that all 'check-for update' calls are made to the expected https
             // urls
@@ -377,6 +414,11 @@ public class HttpSender {
                 setProxyAuth(requestClient);
             }
         }
+
+        method.getParams()
+                .setBooleanParameter(
+                        HttpMethodDirector.PARAM_RESOLVE_HOSTNAME,
+                        param.shouldResolveRemoteHostname(hostName));
 
         // ZAP: Check if a custom state is being used
         if (state != null) {
@@ -506,7 +548,7 @@ public class HttpSender {
                 }
             }
         } finally {
-            IN_LISTENER.set(null);
+            IN_LISTENER.remove();
         }
     }
 
@@ -525,7 +567,7 @@ public class HttpSender {
                 }
             }
         } finally {
-            IN_LISTENER.set(null);
+            IN_LISTENER.remove();
         }
     }
 
@@ -546,8 +588,13 @@ public class HttpSender {
             HttpMessage msg, boolean isFollowRedirect, HttpMethodParams params) throws IOException {
         // Modify the request message if a 'Requesting User' has been set
         User forceUser = this.getUser(msg);
-        if (initiator != AUTHENTICATION_INITIATOR && forceUser != null)
-            forceUser.processMessageToMatchUser(msg);
+        if (forceUser != null) {
+            if (initiator == AUTHENTICATION_POLL_INITIATOR) {
+                forceUser.processMessageToMatchAuthenticatedSession(msg);
+            } else if (initiator != AUTHENTICATION_INITIATOR) {
+                forceUser.processMessageToMatchUser(msg);
+            }
+        }
 
         log.debug("Sending message to: " + msg.getRequestHeader().getURI().toString());
         // Send the message
@@ -556,6 +603,7 @@ public class HttpSender {
         // If there's a 'Requesting User', make sure the response corresponds to an authenticated
         // session and, if not, attempt a reauthentication and try again
         if (initiator != AUTHENTICATION_INITIATOR
+                && initiator != AUTHENTICATION_POLL_INITIATOR
                 && forceUser != null
                 && !msg.getRequestHeader().isImage()
                 && !forceUser.isAuthenticated(msg)) {
@@ -583,13 +631,14 @@ public class HttpSender {
                     null); // replaceAll("Transfer-Encoding: chunked\r\n",
             // "");
             msg.setResponseHeader(resHeader);
-            msg.getResponseBody().setCharset(resHeader.getCharset());
-            msg.getResponseBody().setLength(0);
 
             // ZAP: Do not read response body for Server-Sent Events stream
             // ZAP: Moreover do not set content length to zero
             if (!msg.isEventStream()) {
-                msg.getResponseBody().append(method.getResponseBody());
+                msg.setResponseBody(method.getResponseBody());
+            } else {
+                msg.getResponseBody().setCharset(resHeader.getCharset());
+                msg.getResponseBody().setLength(0);
             }
             msg.setResponseFromTargetHost(true);
 

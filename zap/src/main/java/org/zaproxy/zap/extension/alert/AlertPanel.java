@@ -53,7 +53,8 @@ import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.core.scanner.Alert;
 import org.parosproxy.paros.extension.AbstractPanel;
@@ -76,7 +77,7 @@ public class AlertPanel extends AbstractPanel {
     public static final String ALERT_TREE_PANEL_NAME = "treeAlert";
 
     private static final long serialVersionUID = 1L;
-    private static final Logger logger = Logger.getLogger(AlertPanel.class);
+    private static final Logger logger = LogManager.getLogger(AlertPanel.class);
 
     private ViewDelegate view = null;
     private JTree treeAlert = null;
@@ -599,9 +600,8 @@ public class AlertPanel extends AbstractPanel {
             return alerts;
         }
 
-        for (int i = 0; i < paths.length; i++) {
-            DefaultMutableTreeNode alertNode =
-                    (DefaultMutableTreeNode) paths[i].getLastPathComponent();
+        for (TreePath path : paths) {
+            DefaultMutableTreeNode alertNode = (DefaultMutableTreeNode) path.getLastPathComponent();
             if (alertNode.getChildCount() == 0) {
                 alerts.add((Alert) alertNode.getUserObject());
                 continue;

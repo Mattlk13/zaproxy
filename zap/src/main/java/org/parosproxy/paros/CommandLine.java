@@ -45,17 +45,22 @@
 // ZAP: 2018/06/29 Add command line to run ZAP in dev mode.
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2019/10/09 Issue 5619: Ensure -configfile maintains key order
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Properties;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.extension.CommandLineArgument;
 import org.parosproxy.paros.extension.CommandLineListener;
 import org.parosproxy.paros.network.HttpSender;
@@ -63,7 +68,7 @@ import org.zaproxy.zap.ZAP;
 
 public class CommandLine {
 
-    private static final Logger logger = Logger.getLogger(CommandLine.class);
+    private static final Logger logger = LogManager.getLogger(CommandLine.class);
 
     // ZAP: Made public
     public static final String SESSION = "-session";
@@ -405,13 +410,33 @@ public class CommandLine {
                 // We cant use i18n here as the messages wont have been loaded
                 throw new Exception("File not readable: " + confFile.getAbsolutePath());
             }
-            Properties prop = new Properties();
+
+            Properties prop =
+                    new Properties() {
+                        // Override methods to ensure keys returned in order
+                        List<Object> orderedKeys = new ArrayList<Object>();
+                        private static final long serialVersionUID = 1L;
+
+                        @Override
+                        public synchronized Object put(Object key, Object value) {
+                            orderedKeys.add(key);
+                            return super.put(key, value);
+                        }
+
+                        @Override
+                        public synchronized Enumeration<Object> keys() {
+                            return Collections.enumeration(orderedKeys);
+                        }
+                    };
             try (FileInputStream inStream = new FileInputStream(confFile)) {
                 prop.load(inStream);
             }
 
-            for (Entry<Object, Object> keyValue : prop.entrySet()) {
-                this.configs.put((String) keyValue.getKey(), (String) keyValue.getValue());
+            Enumeration<Object> keyEnum = prop.keys();
+
+            while (keyEnum.hasMoreElements()) {
+                String key = (String) keyEnum.nextElement();
+                this.configs.put(key, prop.getProperty(key));
             }
         }
 
@@ -518,7 +543,7 @@ public class CommandLine {
     }
 
     /**
-     * Returns true if ZAP should not make any unsolicited requests, eg check-for-updates etc
+     * Returns true if ZAP should not make any unsolicited requests, e.g. check-for-updates, etc.
      *
      * @since 2.8.0
      */

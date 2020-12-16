@@ -20,12 +20,11 @@
 package org.zaproxy.zap.extension.pscan.scanner;
 
 import java.lang.reflect.UndeclaredThrowableException;
-import java.util.List;
 import net.htmlparser.jericho.Source;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
-import org.parosproxy.paros.core.scanner.Alert;
 import org.parosproxy.paros.network.HttpMessage;
 import org.zaproxy.zap.extension.pscan.ExtensionPassiveScan;
 import org.zaproxy.zap.extension.pscan.PassiveScanThread;
@@ -33,30 +32,40 @@ import org.zaproxy.zap.extension.pscan.PassiveScript;
 import org.zaproxy.zap.extension.pscan.PluginPassiveScanner;
 import org.zaproxy.zap.extension.script.ExtensionScript;
 import org.zaproxy.zap.extension.script.ScriptWrapper;
+import org.zaproxy.zap.extension.script.ScriptsCache;
+import org.zaproxy.zap.extension.script.ScriptsCache.Configuration;
 
 public class ScriptsPassiveScanner extends PluginPassiveScanner {
 
-    private static final Logger logger = Logger.getLogger(ScriptsPassiveScanner.class);
+    private static final Logger logger = LogManager.getLogger(ScriptsPassiveScanner.class);
 
-    private ExtensionScript extension = null;
+    private final ScriptsCache<PassiveScript> scripts;
     private PassiveScanThread parent = null;
 
     private int currentHRefId;
     private int currentHistoryType;
 
-    public ScriptsPassiveScanner() {}
+    public ScriptsPassiveScanner() {
+        ExtensionScript extension =
+                Control.getSingleton().getExtensionLoader().getExtension(ExtensionScript.class);
+        scripts =
+                extension != null
+                        ? extension.createScriptsCache(
+                                Configuration.<PassiveScript>builder()
+                                        .setScriptType(ExtensionPassiveScan.SCRIPT_TYPE_PASSIVE)
+                                        .setTargetInterface(PassiveScript.class)
+                                        .setInterfaceErrorMessageProvider(
+                                                sw ->
+                                                        Constant.messages.getString(
+                                                                "pscan.scripts.interface.passive.error",
+                                                                sw.getName()))
+                                        .build())
+                        : null;
+    }
 
     @Override
     public String getName() {
         return Constant.messages.getString("pscan.scripts.passivescanner.title");
-    }
-
-    private ExtensionScript getExtension() {
-        if (extension == null) {
-            extension =
-                    Control.getSingleton().getExtensionLoader().getExtension(ExtensionScript.class);
-        }
-        return extension;
     }
 
     @Override
@@ -65,40 +74,18 @@ public class ScriptsPassiveScanner extends PluginPassiveScanner {
     }
 
     @Override
-    public void scanHttpRequestSend(HttpMessage msg, int id) {
-        // Ignore
-    }
-
-    @Override
     public void scanHttpResponseReceive(HttpMessage msg, int id, Source source) {
-        if (this.getExtension() != null) {
-            currentHRefId = id;
-            List<ScriptWrapper> scripts =
-                    extension.getScripts(ExtensionPassiveScan.SCRIPT_TYPE_PASSIVE);
-            for (ScriptWrapper script : scripts) {
-                try {
-                    if (script.isEnabled()) {
-                        PassiveScript s = extension.getInterface(script, PassiveScript.class);
-
-                        if (s != null) {
-                            if (appliesToCurrentHistoryType(script, s)) {
-                                s.scan(this, msg, source);
-                            }
-
-                        } else {
-                            extension.handleFailedScriptInterface(
-                                    script,
-                                    Constant.messages.getString(
-                                            "pscan.scripts.interface.passive.error",
-                                            script.getName()));
-                        }
-                    }
-
-                } catch (Exception e) {
-                    extension.handleScriptException(script, e);
-                }
-            }
+        if (scripts == null) {
+            return;
         }
+
+        currentHRefId = id;
+        scripts.refreshAndExecute(
+                (sw, script) -> {
+                    if (appliesToCurrentHistoryType(sw, script)) {
+                        script.scan(this, msg, source);
+                    }
+                });
     }
 
     private boolean appliesToCurrentHistoryType(ScriptWrapper wrapper, PassiveScript ps) {
@@ -127,6 +114,17 @@ public class ScriptsPassiveScanner extends PluginPassiveScanner {
         }
     }
 
+    /** @since 2.9.0 */
+    @Override
+    public AlertBuilder newAlert() {
+        return super.newAlert();
+    }
+
+    /**
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     alerts.
+     */
+    @Deprecated
     public void raiseAlert(
             int risk,
             int confidence,
@@ -159,6 +157,11 @@ public class ScriptsPassiveScanner extends PluginPassiveScanner {
                 msg);
     }
 
+    /**
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     alerts.
+     */
+    @Deprecated
     public void raiseAlert(
             int risk,
             int confidence,
@@ -175,22 +178,20 @@ public class ScriptsPassiveScanner extends PluginPassiveScanner {
             int wascId,
             HttpMessage msg) {
 
-        Alert alert = new Alert(getPluginId(), risk, confidence, name);
-
-        alert.setDetail(
-                description,
-                msg.getRequestHeader().getURI().toString(),
-                param,
-                attack,
-                otherInfo,
-                solution,
-                reference,
-                evidence,
-                cweId,
-                wascId,
-                msg);
-
-        this.parent.raiseAlert(currentHRefId, alert);
+        newAlert()
+                .setRisk(risk)
+                .setConfidence(confidence)
+                .setName(name)
+                .setDescription(description)
+                .setParam(param)
+                .setOtherInfo(otherInfo)
+                .setSolution(solution)
+                .setReference(reference)
+                .setEvidence(evidence)
+                .setCweId(cweId)
+                .setWascId(wascId)
+                .setMessage(msg)
+                .raise();
     }
 
     public void addTag(String tag) {

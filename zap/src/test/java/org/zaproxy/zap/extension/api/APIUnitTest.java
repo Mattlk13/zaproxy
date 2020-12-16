@@ -20,12 +20,16 @@
 package org.zaproxy.zap.extension.api;
 
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import java.net.Inet4Address;
 import java.util.ArrayList;
@@ -34,13 +38,10 @@ import java.util.concurrent.TimeUnit;
 import net.sf.json.JSON;
 import net.sf.json.JSONObject;
 import org.apache.commons.httpclient.URI;
-import org.apache.log4j.Logger;
-import org.apache.log4j.varia.NullAppender;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.parosproxy.paros.core.proxy.ProxyParam;
 import org.parosproxy.paros.network.HttpHeader;
 import org.parosproxy.paros.network.HttpInputStream;
@@ -54,15 +55,10 @@ import org.zaproxy.zap.network.DomainMatcher;
 import org.zaproxy.zap.utils.ZapXmlConfiguration;
 
 /** Unit test for {@link API}. */
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class APIUnitTest {
 
     private static final String CUSTOM_API_PATH = "/custom/api/";
-
-    @BeforeClass
-    public static void setUp() throws Exception {
-        Logger.getRootLogger().addAppender(new NullAppender());
-    }
 
     @Test
     public void shouldBeEnabledWhenInDaemonMode() {
@@ -462,44 +458,137 @@ public class APIUnitTest {
         assertThat(isApiNonceValid(api, CUSTOM_API_PATH, nonce), is(equalTo(true)));
     }
 
-    @Test(expected = ApiException.class)
+    @Test
+    public void shouldNotHandleShortcutIfNotForcedRequest() throws Exception {
+        // Given
+        API api = createApiWithoutKey();
+        TestApiImplementor apiImplementor = new TestApiImplementor();
+        String shortcut = "shortcut";
+        apiImplementor.addApiShortcut(shortcut);
+        api.registerApiImplementor(apiImplementor);
+        String requestUri = "/" + shortcut;
+        boolean forced = false;
+        // When
+        HttpMessage requestHandled =
+                api.handleApiRequest(
+                        createApiRequest(new byte[] {127, 0, 0, 1}, "localhost", requestUri),
+                        createMockedHttpInputStream(),
+                        createMockedHttpOutputStream(),
+                        forced);
+        // Then
+        assertThat(requestHandled, is(nullValue()));
+        assertThat(apiImplementor.wasUsed(), is(equalTo(false)));
+    }
+
+    @Test
+    public void shouldHandleShortcutIfForcedRequest() throws Exception {
+        // Given
+        API api = createApiWithoutKey();
+        TestApiImplementor apiImplementor = new TestApiImplementor();
+        String shortcut = "shortcut";
+        apiImplementor.addApiShortcut(shortcut);
+        api.registerApiImplementor(apiImplementor);
+        String requestUri = "/" + shortcut;
+        boolean forced = true;
+        // When
+        HttpMessage requestHandled =
+                api.handleApiRequest(
+                        createApiRequest(new byte[] {127, 0, 0, 1}, "localhost", requestUri),
+                        createMockedHttpInputStream(),
+                        createMockedHttpOutputStream(),
+                        forced);
+        // Then
+        assertThat(requestHandled, is(notNullValue()));
+        assertThat(apiImplementor.wasUsed(), is(equalTo(true)));
+    }
+
+    @Test
+    public void shouldHandleShortcutIfZapRequest() throws Exception {
+        // Given
+        API api = createApiWithoutKey();
+        TestApiImplementor apiImplementor = new TestApiImplementor();
+        String shortcut = "shortcut";
+        apiImplementor.addApiShortcut(shortcut);
+        api.registerApiImplementor(apiImplementor);
+        String requestUri = "/" + shortcut;
+        // When
+        HttpMessage requestHandled =
+                api.handleApiRequest(
+                        createApiRequest(new byte[] {127, 0, 0, 1}, API.API_DOMAIN, requestUri),
+                        createMockedHttpInputStream(),
+                        createMockedHttpOutputStream());
+        // Then
+        assertThat(requestHandled, is(notNullValue()));
+        assertThat(apiImplementor.wasUsed(), is(equalTo(true)));
+    }
+
+    @Test
+    public void shouldHandleShortcutIfSecureZapRequest() throws Exception {
+        // Given
+        API api = createApiWithoutKey();
+        TestApiImplementor apiImplementor = new TestApiImplementor();
+        String shortcut = "shortcut";
+        apiImplementor.addApiShortcut(shortcut);
+        api.registerApiImplementor(apiImplementor);
+        String requestUri = "/" + shortcut;
+        HttpRequestHeader apiRequest =
+                createApiRequest(new byte[] {127, 0, 0, 1}, API.API_DOMAIN, requestUri);
+        apiRequest.setSecure(true);
+        // When
+        HttpMessage requestHandled =
+                api.handleApiRequest(
+                        apiRequest, createMockedHttpInputStream(), createMockedHttpOutputStream());
+        // Then
+        assertThat(requestHandled, is(notNullValue()));
+        assertThat(apiImplementor.wasUsed(), is(equalTo(true)));
+    }
+
+    @Test
     public void shouldFailToGetXmlFromResponseWithNullEndpointName() throws ApiException {
         // Given
         String endpointName = null;
         ApiResponse response = ApiResponseTest.INSTANCE;
         // When
-        API.responseToXml(endpointName, response);
-        // Then = ApiException
+        ApiException e =
+                assertThrows(ApiException.class, () -> API.responseToXml(endpointName, response));
+        // Then
+        assertThat(e.getMessage(), containsString("internal_error"));
     }
 
-    @Test(expected = ApiException.class)
+    @Test
     public void shouldFailToGetXmlFromResponseWithEmptyEndpointName() throws ApiException {
         // Given
         String endpointName = "";
         ApiResponse response = ApiResponseTest.INSTANCE;
         // When
-        API.responseToXml(endpointName, response);
-        // Then = ApiException
+        ApiException e =
+                assertThrows(ApiException.class, () -> API.responseToXml(endpointName, response));
+        // Then
+        assertThat(e.getMessage(), containsString("internal_error"));
     }
 
-    @Test(expected = ApiException.class)
+    @Test
     public void shouldFailToGetXmlFromResponseWithInvalidXmlEndpointName() throws ApiException {
         // Given
         String endpointName = "<";
         ApiResponse response = ApiResponseTest.INSTANCE;
         // When
-        API.responseToXml(endpointName, response);
-        // Then = ApiException
+        ApiException e =
+                assertThrows(ApiException.class, () -> API.responseToXml(endpointName, response));
+        // Then
+        assertThat(e.getMessage(), containsString("internal_error"));
     }
 
-    @Test(expected = ApiException.class)
+    @Test
     public void shouldFailToGetXmlFromNullResponse() throws ApiException {
         // Given
         String endpointName = "Name";
         ApiResponse response = null;
         // When
-        API.responseToXml(endpointName, response);
-        // Then = ApiException
+        ApiException e =
+                assertThrows(ApiException.class, () -> API.responseToXml(endpointName, response));
+        // Then
+        assertThat(e.getMessage(), containsString("internal_error"));
     }
 
     @Test
@@ -582,7 +671,8 @@ public class APIUnitTest {
         try {
             URI requestUri = Mockito.mock(URI.class);
             when(requestUri.getPath()).thenReturn(requestPath);
-            HttpRequestHeader request = Mockito.mock(HttpRequestHeader.class);
+            HttpRequestHeader request =
+                    Mockito.mock(HttpRequestHeader.class, withSettings().lenient());
             when(request.getURI()).thenReturn(requestUri);
             when(request.getHeader(HttpHeader.X_ZAP_API_NONCE)).thenReturn(nonce);
             when(request.getSenderAddress())
@@ -634,6 +724,14 @@ public class APIUnitTest {
 
     private static HttpOutputStream createMockedHttpOutputStream() {
         return Mockito.mock(HttpOutputStream.class);
+    }
+
+    private static API createApiWithoutKey() {
+        OptionsParamApi options = createOptionsParamApi();
+        options.setDisableKey(true);
+        API api = new API();
+        api.setOptionsParamApi(options);
+        return api;
     }
 
     private static class TestApiImplementor extends ApiImplementor {

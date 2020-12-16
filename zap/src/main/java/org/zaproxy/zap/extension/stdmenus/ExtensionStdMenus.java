@@ -27,18 +27,19 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import javax.swing.ImageIcon;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.extension.ExtensionAdaptor;
 import org.parosproxy.paros.extension.ExtensionHook;
 import org.parosproxy.paros.extension.ExtensionLoader;
 import org.parosproxy.paros.extension.history.ExtensionHistory;
+import org.parosproxy.paros.extension.manualrequest.ExtensionManualRequestEditor;
 import org.parosproxy.paros.model.Model;
-import org.parosproxy.paros.view.View;
 import org.zaproxy.zap.extension.ascan.ExtensionActiveScan;
 import org.zaproxy.zap.extension.history.PopupMenuExportContextURLs;
 import org.zaproxy.zap.model.Context;
@@ -75,7 +76,7 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
 
     // Still being developed
     // private PopupMenuShowResponseInBrowser popupMenuShowResponseInBrowser = null;
-    private static Logger log = Logger.getLogger(ExtensionStdMenus.class);
+    private static Logger log = LogManager.getLogger(ExtensionStdMenus.class);
 
     public ExtensionStdMenus() {
         super();
@@ -165,13 +166,12 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
                     new java.awt.event.ActionListener() {
                         @Override
                         public void actionPerformed(java.awt.event.ActionEvent e) {
-                            Context ctx =
-                                    Model.getSingleton()
-                                            .getSession()
-                                            .getContext(
-                                                    popupContextTreeMenuOutScope.getContextId());
-                            ctx.setInScope(true);
-                            Model.getSingleton().getSession().saveContext(ctx);
+                            for (Integer id : popupContextTreeMenuInScope.getContextIds()) {
+                                Context ctx = Model.getSingleton().getSession().getContext(id);
+
+                                ctx.setInScope(true);
+                                Model.getSingleton().getSession().saveContext(ctx);
+                            }
                         }
                     });
         }
@@ -196,13 +196,12 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
                     new java.awt.event.ActionListener() {
                         @Override
                         public void actionPerformed(java.awt.event.ActionEvent e) {
-                            Context ctx =
-                                    Model.getSingleton()
-                                            .getSession()
-                                            .getContext(
-                                                    popupContextTreeMenuOutScope.getContextId());
-                            ctx.setInScope(false);
-                            Model.getSingleton().getSession().saveContext(ctx);
+                            for (Integer id : popupContextTreeMenuOutScope.getContextIds()) {
+                                Context ctx = Model.getSingleton().getSession().getContext(id);
+
+                                ctx.setInScope(false);
+                                Model.getSingleton().getSession().saveContext(ctx);
+                            }
                         }
                     });
         }
@@ -227,10 +226,19 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
                         private static final long serialVersionUID = 1L;
 
                         @Override
+                        protected List<Context> getContexts() {
+                            List<Context> contexts = new ArrayList<Context>();
+                            for (Integer id : popupContextTreeMenuDelete.getContextIds()) {
+                                contexts.add(Model.getSingleton().getSession().getContext(id));
+                            }
+                            return contexts;
+                        }
+
+                        @Override
                         protected Context getContext() {
                             return Model.getSingleton()
                                     .getSession()
-                                    .getContext(popupContextTreeMenuOutScope.getContextId());
+                                    .getContext(popupContextTreeMenuDelete.getContextId());
                         }
                     });
             popupContextTreeMenuDelete.setText(Constant.messages.getString("context.delete.popup"));
@@ -240,7 +248,7 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
 
     private PopupContextTreeMenu getPopupContextTreeMenuExport() {
         if (popupContextTreeMenuExport == null) {
-            popupContextTreeMenuExport = new PopupContextTreeMenu();
+            popupContextTreeMenuExport = new PopupContextTreeMenu(false);
             popupContextTreeMenuExport.setText(
                     Constant.messages.getString("menu.file.context.export"));
             popupContextTreeMenuExport.setIcon(
@@ -258,7 +266,7 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
                                             .getSession()
                                             .getContext(popupContextTreeMenuExport.getContextId());
                             ContextExportDialog exportDialog =
-                                    new ContextExportDialog(View.getSingleton().getMainFrame());
+                                    new ContextExportDialog(getView().getMainFrame());
                             exportDialog.setSelectedContext(context);
                             exportDialog.setVisible(true);
                         }
@@ -394,6 +402,7 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
                                     .getExtensionLoader()
                                     .getExtension(ExtensionHistory.class));
             popupMenuResendMessage.setMenuIndex(menuIndex);
+            popupMenuResendMessage.setIcon(ExtensionManualRequestEditor.getIcon());
         }
         return popupMenuResendMessage;
     }
@@ -453,15 +462,6 @@ public class ExtensionStdMenus extends ExtensionAdaptor implements ClipboardOwne
     @Override
     public String getDescription() {
         return Constant.messages.getString("stdexts.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     /** No database tables used, so all supported */

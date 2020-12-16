@@ -20,11 +20,10 @@
 package org.zaproxy.zap.extension.stats;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.net.UnknownHostException;
 import org.apache.commons.lang.StringUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.extension.ExtensionAdaptor;
 import org.parosproxy.paros.extension.ExtensionHook;
@@ -41,7 +40,7 @@ public class ExtensionStats extends ExtensionAdaptor implements OptionsChangedLi
     private OptionsStatsPanel optionsStatsPanel;
     private StatsParam statsParam;
 
-    private static final Logger LOG = Logger.getLogger(ExtensionStats.class);
+    private static final Logger LOG = LogManager.getLogger(ExtensionStats.class);
 
     public ExtensionStats() {
         super();
@@ -105,15 +104,6 @@ public class ExtensionStats extends ExtensionAdaptor implements OptionsChangedLi
     @Override
     public String getDescription() {
         return Constant.messages.getString("stats.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     /** No database tables used, so all supported */

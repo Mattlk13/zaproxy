@@ -19,18 +19,25 @@
  */
 package org.zaproxy.zap;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Matchers.anyObject;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.withSettings;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Locale;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.extension.ExtensionLoader;
@@ -39,7 +46,7 @@ import org.zaproxy.zap.testutils.TestUtils;
 import org.zaproxy.zap.utils.I18N;
 import org.zaproxy.zap.utils.ZapXmlConfiguration;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public abstract class WithConfigsTest extends TestUtils {
 
     /**
@@ -47,15 +54,27 @@ public abstract class WithConfigsTest extends TestUtils {
      *
      * <p>Can be used for other temporary files/dirs.
      */
-    @ClassRule public static TemporaryFolder tempDir = new TemporaryFolder();
+    @TempDir protected static Path tempDir;
+
+    /** The mocked {@code Model}. */
+    protected Model model;
+
+    /** The mocked {@code ExtensionLoader}. */
+    protected ExtensionLoader extensionLoader;
 
     private static String zapInstallDir;
     private static String zapHomeDir;
 
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() throws Exception {
-        zapInstallDir = tempDir.newFolder("install").getAbsolutePath();
-        zapHomeDir = tempDir.newFolder("home").getAbsolutePath();
+        zapInstallDir =
+                Files.createDirectories(tempDir.resolve("install")).toAbsolutePath().toString();
+        zapHomeDir = Files.createDirectories(tempDir.resolve("home")).toAbsolutePath().toString();
+
+        try (InputStream in =
+                WithConfigsTest.class.getResourceAsStream("/log4j2-test.properties")) {
+            Files.copy(in, Paths.get(zapHomeDir, "log4j2.properties"));
+        }
     }
 
     /**
@@ -64,23 +83,33 @@ public abstract class WithConfigsTest extends TestUtils {
      *
      * @throws Exception if an error occurred while setting up the dirs or core classes.
      */
-    @Before
+    @BeforeEach
     public void setUpZap() throws Exception {
         Constant.setZapInstall(zapInstallDir);
         Constant.setZapHome(zapHomeDir);
 
-        ExtensionLoader extLoader = Mockito.mock(ExtensionLoader.class);
-        Control control = Mockito.mock(Control.class);
-        Mockito.when(control.getExtensionLoader()).thenReturn(extLoader);
+        model = mock(Model.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
+        Model.setSingletonForTesting(model);
+
+        extensionLoader = mock(ExtensionLoader.class, withSettings().lenient());
 
         // Init all the things
+        setUpConstant();
+        Control.initSingletonForTesting(Model.getSingleton(), extensionLoader);
+        Model.getSingleton().getOptionsParam().load(new ZapXmlConfiguration());
+    }
+
+    @AfterEach
+    void cleanUp() {
+        Constant.messages = null;
+    }
+
+    public static void setUpConstant() {
         Constant.getInstance();
-        I18N i18n = Mockito.mock(I18N.class);
+        I18N i18n = Mockito.mock(I18N.class, withSettings().lenient());
         given(i18n.getString(anyString())).willReturn("");
-        given(i18n.getString(anyString(), anyObject())).willReturn("");
+        given(i18n.getString(anyString(), any())).willReturn("");
         given(i18n.getLocal()).willReturn(Locale.getDefault());
         Constant.messages = i18n;
-        Control.initSingletonForTesting(Model.getSingleton());
-        Model.getSingleton().getOptionsParam().load(new ZapXmlConfiguration());
     }
 }

@@ -29,7 +29,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
@@ -43,7 +42,8 @@ import javax.xml.transform.stream.StreamResult;
 import net.sf.json.JSONObject;
 import org.apache.commons.httpclient.URIException;
 import org.apache.commons.lang.time.DateUtils;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.core.proxy.ProxyParam;
 import org.parosproxy.paros.model.Model;
 import org.parosproxy.paros.network.HttpHeader;
@@ -129,7 +129,7 @@ public class API {
     private ProxyParam proxyParam;
 
     private Random random = new SecureRandom();
-    private static final Logger logger = Logger.getLogger(API.class);
+    private static final Logger logger = LogManager.getLogger(API.class);
 
     private static synchronized API newInstance() {
         if (api == null) {
@@ -327,8 +327,7 @@ public class API {
             }
         }
 
-        if (shortcutImpl == null
-                && callbackImpl == null
+        if (callbackImpl == null
                 && !url.startsWith(API_URL)
                 && !url.startsWith(API_URL_S)
                 && !force) {
@@ -623,12 +622,14 @@ public class API {
             return;
         }
 
-        List<String> mandatoryParams = element.getMandatoryParamNames();
-        if (mandatoryParams != null) {
-            for (String param : mandatoryParams) {
-                if (!params.has(param) || params.getString(param).length() == 0) {
-                    throw new ApiException(ApiException.Type.MISSING_PARAMETER, param);
-                }
+        for (ApiParameter parameter : element.getParameters()) {
+            if (!parameter.isRequired()) {
+                continue;
+            }
+
+            String name = parameter.getName();
+            if (!params.has(name) || params.getString(name).length() == 0) {
+                throw new ApiException(ApiException.Type.MISSING_PARAMETER, name);
             }
         }
     }
@@ -697,7 +698,7 @@ public class API {
      * @param prefix the prefix of the API implementor
      * @param type the request type
      * @param name the name of the endpoint
-     * @param proxy if true then the URI returned will only work if proxying via ZAP, ie it will
+     * @param proxy if true then the URI returned will only work if proxying via ZAP, i.e. it will
      *     start with http://zap/..
      * @return the URL to access the defined endpoint
      * @see #getBaseURL(boolean)

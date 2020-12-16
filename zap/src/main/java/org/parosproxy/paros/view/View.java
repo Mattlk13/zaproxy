@@ -44,7 +44,7 @@
 // ZAP: 2013/07/23 Issue 738: Options to hide tabs
 // ZAP: 2013/08/21 Support for shared context for Context Properties Panels.
 // ZAP: 2013/12/13 Disabled the updating of 'Sites' tab, because it has been added elsewhere to
-// accomodate the 'Full Layout' functionality.
+// accommodate the 'Full Layout' functionality.
 // ZAP: 2014/01/06 Issue 965: Support 'single page' apps and 'non standard' parameter separators
 // ZAP: 2014/01/19 Added option to execute code after init of the panels when showing the session
 // dialog
@@ -87,6 +87,8 @@
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
 // ZAP: 2019/07/10 Update to use Context.getId following deprecation of Context.getIndex
+// ZAP: 2019/12/13 Update new footer proxy label in postInit (Issue 2016)
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.view;
 
 import java.awt.Component;
@@ -111,7 +113,8 @@ import javax.swing.JPanel;
 import javax.swing.JToggleButton;
 import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.extension.AbstractPanel;
@@ -208,7 +211,7 @@ public class View implements ViewDelegate {
     private Map<ContextPanelFactory, List<AbstractContextPropertiesPanel>>
             contextPanelFactoriesPanels = new HashMap<>();
 
-    private static final Logger logger = Logger.getLogger(View.class);
+    private static final Logger logger = LogManager.getLogger(View.class);
 
     // ZAP: splash screen
     private SplashScreen splashScreen = null;
@@ -348,6 +351,7 @@ public class View implements ViewDelegate {
                 });
         mainFrame.getMainMenuBar().getMenuView().add(unpinAllMenu);
 
+        mainFrame.getMainFooterPanel().optionsChanged();
         postInitialisation = true;
     }
 
@@ -999,7 +1003,7 @@ public class View implements ViewDelegate {
         return dialog;
     }
 
-    // ZAP: Added main toolbar mathods
+    // ZAP: Added main toolbar methods
     public void addMainToolbarButton(JButton button) {
         this.getMainFrame().getMainToolbarPanel().addButton(button);
     }

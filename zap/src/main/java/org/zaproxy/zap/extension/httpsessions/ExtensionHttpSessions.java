@@ -20,8 +20,6 @@
 package org.zaproxy.zap.extension.httpsessions;
 
 import java.net.HttpCookie;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,7 +28,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.control.Control.Mode;
@@ -72,7 +71,7 @@ public class ExtensionHttpSessions extends ExtensionAdaptor
     public static final String NAME = "ExtensionHttpSessions";
 
     /** The Constant log. */
-    private static final Logger log = Logger.getLogger(ExtensionHttpSessions.class);
+    private static final Logger log = LogManager.getLogger(ExtensionHttpSessions.class);
 
     /** The http sessions panel. */
     private HttpSessionsPanel httpSessionsPanel;
@@ -141,15 +140,6 @@ public class ExtensionHttpSessions extends ExtensionAdaptor
     @Override
     public String getDescription() {
         return Constant.messages.getString("httpsessions.desc");
-    }
-
-    @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
     }
 
     @Override
@@ -604,7 +594,8 @@ public class ExtensionHttpSessions extends ExtensionAdaptor
     @Override
     public void onHttpRequestSend(HttpMessage msg, int initiator, HttpSender sender) {
         if (initiator == HttpSender.CHECK_FOR_UPDATES_INITIATOR
-                || initiator == HttpSender.AUTHENTICATION_INITIATOR) {
+                || initiator == HttpSender.AUTHENTICATION_INITIATOR
+                || initiator == HttpSender.AUTHENTICATION_POLL_INITIATOR) {
             return;
         }
 

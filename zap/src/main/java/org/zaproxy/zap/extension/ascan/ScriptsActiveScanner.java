@@ -25,21 +25,28 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import org.apache.commons.httpclient.HttpException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.core.scanner.AbstractAppParamPlugin;
+import org.parosproxy.paros.core.scanner.AbstractPlugin.AlertBuilder;
 import org.parosproxy.paros.core.scanner.Alert;
 import org.parosproxy.paros.core.scanner.Category;
 import org.parosproxy.paros.network.HttpMessage;
 import org.zaproxy.zap.extension.script.ExtensionScript;
 import org.zaproxy.zap.extension.script.ScriptWrapper;
+import org.zaproxy.zap.extension.script.ScriptsCache;
+import org.zaproxy.zap.extension.script.ScriptsCache.CachedScript;
+import org.zaproxy.zap.extension.script.ScriptsCache.Configuration;
+import org.zaproxy.zap.extension.script.ScriptsCache.InterfaceProvider;
 
 public class ScriptsActiveScanner extends AbstractAppParamPlugin {
 
     private ExtensionScript extension = null;
+    private ScriptsCache<ActiveScript> cachedScripts;
 
-    private static Logger logger = Logger.getLogger(ScriptsActiveScanner.class);
+    private static Logger logger = LogManager.getLogger(ScriptsActiveScanner.class);
     /**
      * A {@code Set} containing the scripts that do not implement {@code ActiveScript2}, to show an
      * error if those scripts do not implement {@code ActiveScript} (thus not implementing any of
@@ -170,6 +177,29 @@ public class ScriptsActiveScanner extends AbstractAppParamPlugin {
         }
 
         if (!isStop()) {
+            InterfaceProvider<ActiveScript> interfaceProvider =
+                    (scriptWrapper, targetInterface) -> {
+                        ActiveScript s = extension.getInterface(scriptWrapper, targetInterface);
+                        if (s != null) {
+                            return s;
+                        }
+                        if (scriptsNoInterface.contains(scriptWrapper)) {
+                            extension.handleFailedScriptInterface(
+                                    scriptWrapper,
+                                    Constant.messages.getString(
+                                            "ascan.scripts.interface.active.error",
+                                            scriptWrapper.getName()));
+                        }
+                        return null;
+                    };
+            cachedScripts =
+                    getExtension()
+                            .createScriptsCache(
+                                    Configuration.<ActiveScript>builder()
+                                            .setScriptType(ExtensionActiveScan.SCRIPT_TYPE_ACTIVE)
+                                            .setTargetInterface(ActiveScript.class)
+                                            .setInterfaceProvider(interfaceProvider)
+                                            .build());
             super.scan();
         }
         scriptsNoInterface.clear();
@@ -177,33 +207,25 @@ public class ScriptsActiveScanner extends AbstractAppParamPlugin {
 
     @Override
     public void scan(HttpMessage msg, String param, String value) {
-        List<ScriptWrapper> scripts = this.getActiveScripts();
+        cachedScripts.refresh();
 
-        for (Iterator<ScriptWrapper> it = scripts.iterator(); it.hasNext() && !isStop(); ) {
-            ScriptWrapper script = it.next();
+        for (CachedScript<ActiveScript> cachedScript : cachedScripts.getCachedScripts()) {
+            if (isStop()) {
+                return;
+            }
+
+            ScriptWrapper script = cachedScript.getScriptWrapper();
             try {
-                if (script.isEnabled()) {
-                    ActiveScript s = extension.getInterface(script, ActiveScript.class);
-
-                    if (s != null) {
-                        logger.debug(
-                                "Calling script "
-                                        + script.getName()
-                                        + " scan for "
-                                        + msg.getRequestHeader().getURI()
-                                        + "param="
-                                        + param
-                                        + " value="
-                                        + value);
-                        s.scan(this, msg, param, value);
-
-                    } else if (scriptsNoInterface.contains(script)) {
-                        extension.handleFailedScriptInterface(
-                                script,
-                                Constant.messages.getString(
-                                        "ascan.scripts.interface.active.error", script.getName()));
-                    }
-                }
+                logger.debug(
+                        "Calling script "
+                                + script.getName()
+                                + " scan for "
+                                + msg.getRequestHeader().getURI()
+                                + "param="
+                                + param
+                                + " value="
+                                + value);
+                cachedScript.getScript().scan(this, msg, param, value);
 
             } catch (Exception e) {
                 extension.handleScriptException(script, e);
@@ -237,6 +259,17 @@ public class ScriptsActiveScanner extends AbstractAppParamPlugin {
         super.sendAndReceive(msg, isFollowRedirect, handleAntiCSRF);
     }
 
+    /** @since 2.9.0 */
+    @Override
+    public AlertBuilder newAlert() {
+        return super.newAlert();
+    }
+
+    /**
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     alerts.
+     */
+    @Deprecated
     public void raiseAlert(
             int risk,
             int confidence,
@@ -267,6 +300,11 @@ public class ScriptsActiveScanner extends AbstractAppParamPlugin {
                 msg);
     }
 
+    /**
+     * @deprecated (2.9.0) Use {@link #newAlert()} to build and {@link AlertBuilder#raise() raise}
+     *     alerts.
+     */
+    @Deprecated
     public void raiseAlert(
             int risk,
             int confidence,
@@ -312,5 +350,25 @@ public class ScriptsActiveScanner extends AbstractAppParamPlugin {
     @Override
     public int getWascId() {
         return 0;
+    }
+
+    @Override
+    public boolean isPage200(HttpMessage msg) {
+        return super.isPage200(msg);
+    }
+
+    @Override
+    public boolean isPage404(HttpMessage msg) {
+        return super.isPage404(msg);
+    }
+
+    @Override
+    public boolean isPage500(HttpMessage msg) {
+        return super.isPage500(msg);
+    }
+
+    @Override
+    public boolean isPageOther(HttpMessage msg) {
+        return super.isPageOther(msg);
     }
 }

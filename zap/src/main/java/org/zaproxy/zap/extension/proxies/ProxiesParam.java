@@ -24,14 +24,15 @@ import java.util.Iterator;
 import java.util.List;
 import org.apache.commons.configuration.ConversionException;
 import org.apache.commons.configuration.HierarchicalConfiguration;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.common.AbstractParam;
 import org.parosproxy.paros.core.proxy.ProxyParam;
 import org.parosproxy.paros.model.Model;
 
 public class ProxiesParam extends AbstractParam {
 
-    private static final Logger logger = Logger.getLogger(ProxiesParam.class);
+    private static final Logger logger = LogManager.getLogger(ProxiesParam.class);
 
     private static final String PROXIES_BASE_KEY = "proxies";
 
@@ -66,9 +67,9 @@ public class ProxiesParam extends AbstractParam {
                                 sub.getInt(PROXY_PORT_KEY),
                                 sub.getBoolean(PROXY_ENABLED_KEY, true),
                                 sub.getBoolean(PROXY_ANY_LOCAL_KEY),
-                                sub.getBoolean(PROXY_REM_UNSUPPORTED),
-                                sub.getBoolean(PROXY_DECODE_KEY),
-                                sub.getBoolean(PROXY_BEHIND_NAT_KEY)));
+                                sub.getBoolean(PROXY_REM_UNSUPPORTED, true),
+                                sub.getBoolean(PROXY_DECODE_KEY, true),
+                                sub.getBoolean(PROXY_BEHIND_NAT_KEY, false)));
             }
         } catch (ConversionException e) {
             logger.error("Error while loading proxies: " + e.getMessage(), e);

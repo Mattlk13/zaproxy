@@ -27,6 +27,7 @@ import java.util.Comparator;
 import java.util.List;
 import net.sf.json.JSONException;
 import net.sf.json.JSONObject;
+import org.apache.commons.lang3.StringUtils;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.common.AbstractParam;
 import org.parosproxy.paros.network.HttpInputStream;
@@ -83,8 +84,26 @@ public abstract class ApiImplementor {
     }
 
     public void addApiView(ApiView view) {
-        validateApiElement(apiViews, view);
-        this.apiViews.add(view);
+        addApiElement(apiViews, view, RequestType.view);
+    }
+
+    private <T extends ApiElement> void addApiElement(
+            List<T> elements, T element, RequestType type) {
+        validateApiElement(elements, element);
+        String descKey = element.getDescriptionTag();
+        if (StringUtils.isEmpty(descKey)) {
+            descKey = getI18nPrefix() + ".api." + type.name() + "." + element.getName();
+            element.setDescriptionTag(descKey);
+        }
+
+        String descParamKeyPrefix = descKey + ".param.";
+        for (ApiParameter parameter : element.getParameters()) {
+            if (parameter.getDescriptionKey().isEmpty()) {
+                parameter.setDescriptionKey(descParamKeyPrefix + parameter.getName());
+            }
+        }
+
+        elements.add(element);
     }
 
     /**
@@ -111,13 +130,11 @@ public abstract class ApiImplementor {
     }
 
     public void addApiOthers(ApiOther other) {
-        validateApiElement(apiOthers, other);
-        this.apiOthers.add(other);
+        addApiElement(apiOthers, other, RequestType.other);
     }
 
     public void addApiAction(ApiAction action) {
-        validateApiElement(apiActions, action);
-        this.apiActions.add(action);
+        addApiElement(apiActions, action, RequestType.action);
     }
 
     public void addApiShortcut(String shortcut) {
@@ -125,7 +142,7 @@ public abstract class ApiImplementor {
     }
 
     public void addApiPersistentConnection(ApiPersistentConnection pconn) {
-        this.apiPersistentConnections.add(pconn);
+        addApiElement(apiPersistentConnections, pconn, RequestType.pconn);
     }
 
     /**
@@ -422,6 +439,32 @@ public abstract class ApiImplementor {
 
     public abstract String getPrefix();
 
+    /**
+     * Gets the prefix for default resource keys for the description of the API implementor and its
+     * elements.
+     *
+     * <p>Defaults to {@code getPrefix()}.
+     *
+     * @return the prefix for i18n keys.
+     * @since TODO add version
+     */
+    protected String getI18nPrefix() {
+        return getPrefix();
+    }
+
+    /**
+     * Gets the resource key of the description.
+     *
+     * <p>Defaults to {@code getI18nPrefix() + ".api.desc"}.
+     *
+     * @return the key of the description.
+     * @since 2.9.0
+     * @see org.zaproxy.zap.utils.I18N#getString(String)
+     */
+    public String getDescriptionKey() {
+        return getI18nPrefix() + ".api.desc";
+    }
+
     public ApiAction getApiAction(String name) {
         for (ApiAction action : this.apiActions) {
             if (action.getName().equals(name)) {
@@ -469,6 +512,14 @@ public abstract class ApiImplementor {
     protected int getParam(JSONObject params, String name, int defaultValue) {
         try {
             return params.getInt(name);
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    protected long getParam(JSONObject params, String name, long defaultValue) {
+        try {
+            return params.getLong(name);
         } catch (Exception e) {
             return defaultValue;
         }

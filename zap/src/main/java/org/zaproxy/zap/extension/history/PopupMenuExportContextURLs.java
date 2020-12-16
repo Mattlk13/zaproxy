@@ -21,9 +21,11 @@ package org.zaproxy.zap.extension.history;
 
 import java.awt.Component;
 import java.io.File;
+import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.extension.Extension;
 import org.parosproxy.paros.model.SiteNode;
@@ -35,7 +37,7 @@ public class PopupMenuExportContextURLs extends PopupMenuExportURLs {
 
     private static final long serialVersionUID = -4426560452505908380L;
 
-    private static Logger LOG = Logger.getLogger(PopupMenuExportURLs.class);
+    private static Logger LOG = LogManager.getLogger(PopupMenuExportURLs.class);
 
     public PopupMenuExportContextURLs(String menuItem, Extension extension) {
         super(menuItem, extension);
@@ -69,15 +71,20 @@ public class PopupMenuExportContextURLs extends PopupMenuExportURLs {
         if (file == null) {
             return;
         }
-        super.writeURLs(file, this.getOutputSet(ctx));
+
+        List<Context> contexts = extension.getView().getSiteTreePanel().getSelectedContexts();
+        SortedSet<String> allUrls = new TreeSet<String>();
+
+        for (Context c : contexts) {
+            this.getOutputSet(c, allUrls);
+        }
+        super.writeURLs(file, allUrls);
     }
 
-    private SortedSet<String> getOutputSet(Context ctx) {
-        SortedSet<String> outputSet = new TreeSet<String>();
+    private void getOutputSet(Context ctx, SortedSet<String> outputSet) {
 
         for (SiteNode node : ctx.getNodesInContextFromSiteTree()) {
             outputSet.add(node.getHistoryReference().getURI().toString());
         }
-        return outputSet;
     }
 }

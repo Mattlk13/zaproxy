@@ -19,14 +19,13 @@
  */
 package org.zaproxy.zap.extension.authorization;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.ConfigurationException;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.db.DatabaseException;
 import org.parosproxy.paros.db.RecordContext;
@@ -46,10 +45,13 @@ public class ExtensionAuthorization extends ExtensionAdaptor
         implements ContextPanelFactory, ContextDataFactory {
 
     /** The Constant log. */
-    private static final Logger log = Logger.getLogger(ExtensionAuthorization.class);
+    private static final Logger log = LogManager.getLogger(ExtensionAuthorization.class);
 
     /** The NAME of the extension. */
     public static final String NAME = "ExtensionAuthorization";
+
+    /** The ID that indicates that there's no authorization method. */
+    private static final int NO_AUTH_METHOD = -1;
 
     /** The map of context panels. */
     private Map<Integer, ContextAuthorizationPanel> contextPanelsMap = new HashMap<>();
@@ -73,7 +75,7 @@ public class ExtensionAuthorization extends ExtensionAdaptor
 
     @Override
     public String getUIName() {
-        return Constant.messages.getString("autorization.name");
+        return Constant.messages.getString("authorization.name");
     }
 
     @Override
@@ -150,15 +152,6 @@ public class ExtensionAuthorization extends ExtensionAdaptor
     }
 
     @Override
-    public URL getURL() {
-        try {
-            return new URL(Constant.ZAP_HOMEPAGE);
-        } catch (MalformedURLException e) {
-            return null;
-        }
-    }
-
-    @Override
     public String getAuthor() {
         return Constant.ZAP_TEAM;
     }
@@ -173,11 +166,15 @@ public class ExtensionAuthorization extends ExtensionAdaptor
 
     @Override
     public void importContextData(Context ctx, Configuration config) throws ConfigurationException {
-        int type = config.getInt(AuthorizationDetectionMethod.CONTEXT_CONFIG_AUTH_TYPE);
+        int type =
+                config.getInt(
+                        AuthorizationDetectionMethod.CONTEXT_CONFIG_AUTH_TYPE, NO_AUTH_METHOD);
         switch (type) {
             case BasicAuthorizationDetectionMethod.METHOD_UNIQUE_ID:
                 ctx.setAuthorizationDetectionMethod(new BasicAuthorizationDetectionMethod(config));
                 break;
+            default:
+                log.warn("No authorization detection method found for ID: " + type);
         }
     }
 }

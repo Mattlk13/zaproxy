@@ -25,11 +25,17 @@
 // ZAP: 2016/10/27 Explicitly show other panel when the selected panel is removed.
 // ZAP: 2017/06/23 Ensure panel with validation errors is visible.
 // ZAP: 2017/09/03 Cope with Java 9 change to TreeNode.children().
+// ZAP: 2017/12/09 Issue 3358: Added SearchPanel.
 // ZAP: 2018/01/08 Allow to expand the node of a param panel.
 // ZAP: 2018/03/26 Ensure node of selected panel is visible.
 // ZAP: 2018/04/12 Allow to check if a param panel is selected.
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2020/03/24 Remove hardcoded white background on Headline field (part of Issue 5542).
+// ZAP: 2020/08/25 Catch NullPointerException when validating/saving the panel.
+// ZAP: 2020/10/26 Use empty border in the help button, to prevent the look and feel change from
+// resetting it. Also, use the icon from the ExtensionHelp.
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.view;
 
 import java.awt.BorderLayout;
@@ -41,28 +47,42 @@ import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.Hashtable;
+import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JToolBar;
 import javax.swing.JTree;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jdesktop.swingx.JXErrorPane;
+import org.jdesktop.swingx.error.ErrorInfo;
 import org.parosproxy.paros.Constant;
 import org.zaproxy.zap.extension.help.ExtensionHelp;
 import org.zaproxy.zap.utils.DisplayUtils;
 import org.zaproxy.zap.utils.FontUtils;
 import org.zaproxy.zap.utils.ZapTextField;
+import org.zaproxy.zap.view.panelsearch.ComponentHighlighterProvider;
+import org.zaproxy.zap.view.panelsearch.ComponentSearchProvider;
+import org.zaproxy.zap.view.panelsearch.SearchAndHighlight;
+import org.zaproxy.zap.view.panelsearch.items.AbstractComponentSearch;
+import org.zaproxy.zap.view.panelsearch.items.TreeNodeElement;
+import org.zaproxy.zap.view.panelsearch.items.TreeUtils;
 
 public class AbstractParamContainerPanel extends JSplitPane {
 
@@ -91,13 +111,20 @@ public class AbstractParamContainerPanel extends JSplitPane {
     private JScrollPane jScrollPane = null;
     private JScrollPane jScrollPane1 = null;
 
+    private JPanel leftPanel;
+    private ZapTextField searchTextField;
+    private JButton btnSearch;
+    private JButton btnClearSearch;
+    private JToolBar searchToolBar;
+    private SearchAndHighlight searchAndHighlight;
+
     // ZAP: show the last selected panel
     private String nameLastSelectedPanel = null;
     private AbstractParamPanel currentShownPanel;
     private ShowHelpAction showHelpAction = null;
 
     // ZAP: Added logger
-    private static Logger log = Logger.getLogger(AbstractParamContainerPanel.class);
+    private static Logger log = LogManager.getLogger(AbstractParamContainerPanel.class);
 
     /**
      * Constructs an {@code AbstractParamContainerPanel} with a default root node's name ({@value
@@ -129,7 +156,12 @@ public class AbstractParamContainerPanel extends JSplitPane {
         this.setBorder(
                 javax.swing.BorderFactory.createEtchedBorder(
                         javax.swing.border.EtchedBorder.LOWERED));
-        this.setLeftComponent(getJScrollPane());
+        this.setLeftComponent(getLeftPanel());
+        searchAndHighlight = new SearchAndHighlight(this);
+        searchAndHighlight.registerComponentSearch(
+                new AbstractParamContainerPanelComponentSearch());
+        searchAndHighlight.registerComponentHighlighter(
+                new AbstractParamContainerPanelComponentSearch());
     }
 
     /**
@@ -296,7 +328,6 @@ public class AbstractParamContainerPanel extends JSplitPane {
                             javax.swing.border.EtchedBorder.RAISED));
             txtHeadline.setEditable(false);
             txtHeadline.setEnabled(false);
-            txtHeadline.setBackground(java.awt.Color.white);
             txtHeadline.setFont(FontUtils.getFont(Font.BOLD));
         }
 
@@ -400,6 +431,18 @@ public class AbstractParamContainerPanel extends JSplitPane {
         panel.setName(name);
         getPanelParam().add(panel, name);
         tablePanel.put(name, panel);
+        registerSearchAndHighlightComponents(panel);
+    }
+
+    private void registerSearchAndHighlightComponents(AbstractParamPanel panel) {
+        if (panel instanceof ComponentSearchProvider) {
+            searchAndHighlight.registerComponentSearch((ComponentSearchProvider) panel);
+        }
+
+        if (panel instanceof ComponentHighlighterProvider) {
+            searchAndHighlight.registerComponentHighlighter((ComponentHighlighterProvider) panel);
+        }
+        searchAndHighlight.clearHighlight();
     }
 
     /**
@@ -442,8 +485,20 @@ public class AbstractParamContainerPanel extends JSplitPane {
             getTreeModel().removeNodeFromParent(node);
         }
 
+        removeSearchAndHighlightComponents(panel);
         getPanelParam().remove(panel);
         tablePanel.remove(panel.getName());
+    }
+
+    private void removeSearchAndHighlightComponents(AbstractParamPanel panel) {
+        if (panel instanceof ComponentSearchProvider) {
+            searchAndHighlight.removeComponentSearch((ComponentSearchProvider) panel);
+        }
+
+        if (panel instanceof ComponentHighlighterProvider) {
+            searchAndHighlight.removeComponentHighlighter((ComponentHighlighterProvider) panel);
+        }
+        searchAndHighlight.clearHighlight();
     }
 
     private DefaultMutableTreeNode getFirstAvailableNode() {
@@ -484,12 +539,16 @@ public class AbstractParamContainerPanel extends JSplitPane {
         }
 
         // exit if panel name not found.
-        AbstractParamPanel panel = tablePanel.get(name);
+        AbstractParamPanel panel = getParamPanel(name);
         if (panel == null) {
             return;
         }
 
         showParamPanel(panel, name);
+    }
+
+    private AbstractParamPanel getParamPanel(String name) {
+        return tablePanel.get(name);
     }
 
     /**
@@ -580,11 +639,27 @@ public class AbstractParamContainerPanel extends JSplitPane {
             panel = en.nextElement();
             try {
                 panel.validateParam(paramObject);
+            } catch (NullPointerException e) {
+                log.error("Failed to validate the panel: ", e);
+                showInternalError(e);
             } catch (Exception e) {
                 showParamPanel(panel, panel.getName());
                 throw e;
             }
         }
+    }
+
+    private static void showInternalError(Exception e) {
+        ErrorInfo errorInfo =
+                new ErrorInfo(
+                        Constant.messages.getString("generic.error.internal.title"),
+                        Constant.messages.getString("generic.error.internal.msg"),
+                        null,
+                        null,
+                        e,
+                        null,
+                        null);
+        JXErrorPane.showDialog(null, errorInfo);
     }
 
     /**
@@ -602,7 +677,12 @@ public class AbstractParamContainerPanel extends JSplitPane {
         AbstractParamPanel panel = null;
         while (en.hasMoreElements()) {
             panel = en.nextElement();
-            panel.saveParam(paramObject);
+            try {
+                panel.saveParam(paramObject);
+            } catch (NullPointerException e) {
+                log.error("Failed to save the panel: ", e);
+                showInternalError(e);
+            }
         }
     }
 
@@ -806,6 +886,107 @@ public class AbstractParamContainerPanel extends JSplitPane {
         }
     }
 
+    private JPanel getLeftPanel() {
+
+        if (leftPanel == null) {
+            leftPanel = new JPanel();
+            leftPanel.setLayout(new BorderLayout());
+            leftPanel.add(getSearchToolbar(), BorderLayout.PAGE_START);
+            leftPanel.add(getJScrollPane(), BorderLayout.CENTER);
+        }
+        return leftPanel;
+    }
+
+    private JToolBar getSearchToolbar() {
+        if (searchToolBar == null) {
+            searchToolBar = new JToolBar();
+            searchToolBar.setLayout(new GridBagLayout());
+            searchToolBar.setEnabled(true);
+            searchToolBar.setFloatable(false);
+            searchToolBar.setRollover(true);
+            searchToolBar.setName("SearchToolbar");
+
+            GridBagConstraints cons = new GridBagConstraints();
+            cons.fill = GridBagConstraints.HORIZONTAL;
+            cons.insets = new java.awt.Insets(0, 0, 0, 0);
+            cons.weightx = 1;
+            cons.gridx = 0;
+            searchToolBar.add(getSearchTextField(), cons);
+
+            cons.weightx = 0;
+            cons.gridx = 1;
+            searchToolBar.add(getSearchButton(), cons);
+
+            cons.weightx = 0;
+            cons.gridx = 2;
+            searchToolBar.add(getClearSearchButton(), cons);
+        }
+        return searchToolBar;
+    }
+
+    private ZapTextField getSearchTextField() {
+        if (searchTextField == null) {
+            searchTextField = new ZapTextField();
+
+            searchTextField.addKeyListener(
+                    new KeyAdapter() {
+
+                        @Override
+                        public void keyPressed(KeyEvent e) {
+                            if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                                searchAndHighlight.searchAndHighlight(searchTextField.getText());
+                            }
+                        }
+                    });
+        }
+        return searchTextField;
+    }
+
+    private JButton getSearchButton() {
+        if (btnSearch == null) {
+            btnSearch = new JButton();
+            btnSearch.setIcon(
+                    new ImageIcon(
+                            AbstractParamContainerPanel.class.getResource(
+                                    "/resource/icon/16/049.png"))); // search icon
+            btnSearch.setToolTipText(
+                    Constant.messages.getString("paramcontainer.panel.search.tooltip"));
+
+            btnSearch.addActionListener(
+                    new java.awt.event.ActionListener() {
+
+                        @Override
+                        public void actionPerformed(java.awt.event.ActionEvent e) {
+                            searchAndHighlight.searchAndHighlight(searchTextField.getText());
+                        }
+                    });
+        }
+        return btnSearch;
+    }
+
+    private JButton getClearSearchButton() {
+        if (btnClearSearch == null) {
+            btnClearSearch = new JButton();
+            btnClearSearch.setIcon(
+                    new ImageIcon(
+                            AbstractParamContainerPanel.class.getResource(
+                                    "/resource/icon/16/101.png"))); // cancel icon
+            btnClearSearch.setToolTipText(
+                    Constant.messages.getString("paramcontainer.panel.clear.tooltip"));
+
+            btnClearSearch.addActionListener(
+                    new java.awt.event.ActionListener() {
+
+                        @Override
+                        public void actionPerformed(java.awt.event.ActionEvent e) {
+                            searchTextField.setText("");
+                            searchAndHighlight.clearHighlight();
+                        }
+                    });
+        }
+        return btnClearSearch;
+    }
+
     /**
      * This method initializes jScrollPane
      *
@@ -849,11 +1030,8 @@ public class AbstractParamContainerPanel extends JSplitPane {
     private JButton getHelpButton() {
         if (btnHelp == null) {
             btnHelp = new JButton();
-            btnHelp.setBorder(null);
-            btnHelp.setIcon(
-                    new ImageIcon(
-                            AbstractParamContainerPanel.class.getResource(
-                                    "/resource/icon/16/201.png"))); // help icon
+            btnHelp.setBorder(BorderFactory.createEmptyBorder());
+            btnHelp.setIcon(ExtensionHelp.getHelpIcon());
             btnHelp.addActionListener(getShowHelpAction());
             btnHelp.setToolTipText(Constant.messages.getString("menu.help"));
         }
@@ -896,6 +1074,29 @@ public class AbstractParamContainerPanel extends JSplitPane {
          */
         public void setHelpIndex(String helpIndex) {
             this.helpIndex = helpIndex;
+        }
+    }
+
+    static class AbstractParamContainerPanelComponentSearch
+            extends AbstractComponentSearch<AbstractParamContainerPanel> {
+
+        @Override
+        protected Object[] getComponentsInternal(AbstractParamContainerPanel component) {
+
+            // The tree contains the nodes and there is a valueChanged listener on the tree.
+            // OnValueChanged the ParamPanel will be switched. So it behaves as a child component.
+            // But in the ObjectModel they have no parent/child relation.
+            // This class is for faking the parent/child relation between TreeNode and ParamPanel.
+            // The name of the panel is the name of the Node
+
+            ArrayList<TreeNodeElement> treeNodeElements =
+                    TreeUtils.getTreeNodeElement(component.getTreeParam());
+            for (TreeNodeElement treeNodeElement : treeNodeElements) {
+                AbstractParamPanel panel =
+                        component.getParamPanel(treeNodeElement.getNode().toString());
+                treeNodeElement.addFakeObjectModelChildren(panel);
+            }
+            return treeNodeElements.toArray();
         }
     }
 }

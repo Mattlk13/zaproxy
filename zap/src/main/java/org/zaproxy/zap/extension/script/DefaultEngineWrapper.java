@@ -27,14 +27,15 @@ import java.util.Map;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineFactory;
 import javax.swing.ImageIcon;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
 
 public class DefaultEngineWrapper extends ScriptEngineWrapper {
 
     private Map<String, String> templateMap = new HashMap<>();
 
-    private static Logger logger = Logger.getLogger(DefaultEngineWrapper.class);
+    private static Logger logger = LogManager.getLogger(DefaultEngineWrapper.class);
 
     /**
      * Constructs a {@code DefaultEngineWrapper} with the given engine (to obtain a factory).
@@ -74,7 +75,7 @@ public class DefaultEngineWrapper extends ScriptEngineWrapper {
         if (!templateMap.containsKey(type)) {
             templateMap.put(
                     type,
-                    this.getStringReource(
+                    this.getStringResource(
                             this.getLanguageName().toLowerCase()
                                     + File.separator
                                     + type.toLowerCase()
@@ -84,7 +85,7 @@ public class DefaultEngineWrapper extends ScriptEngineWrapper {
         return templateMap.get(type);
     }
 
-    private String getStringReource(String resourceName) {
+    private String getStringResource(String resourceName) {
 
         File file = new File(ExtensionScript.TEMPLATES_DIR, resourceName);
         if (!file.exists()) {

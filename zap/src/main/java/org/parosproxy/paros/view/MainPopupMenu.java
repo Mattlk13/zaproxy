@@ -46,6 +46,7 @@
 // ZAP: 2015/01/22 Use ExtensionPopupMenu for super menus
 // ZAP: 2019/06/01 Normalise line endings.
 // ZAP: 2019/06/05 Normalise format/style.
+// ZAP: 2020/11/26 Use Log4j 2 classes for logging.
 package org.parosproxy.paros.view;
 
 import java.awt.Component;
@@ -61,7 +62,8 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.control.Control;
 import org.parosproxy.paros.control.Control.Mode;
 import org.parosproxy.paros.extension.ExtensionHookMenu;
@@ -82,7 +84,7 @@ public class MainPopupMenu extends JPopupMenu {
     // ZAP: Added support for submenus
     Map<String, JMenu> superMenus = new HashMap<>();
     View view = null;
-    private static Logger log = Logger.getLogger(MainPopupMenu.class);
+    private static Logger log = LogManager.getLogger(MainPopupMenu.class);
 
     /**
      * The change listener responsible for updating the {@code pathSelectedMenu} when the path to
@@ -214,10 +216,10 @@ public class MainPopupMenu extends JPopupMenu {
     }
 
     /**
-     * The method {@code ExtensionPopupMenu#preprepareShow()} is deprecated but it must still be
-     * called for backward compatibility, so to avoid hiding future deprecations of other
-     * methods/classes this method was added to suppress the deprecation warning locally (instead of
-     * the whole method {@code showImpl(PopupMenuInvokerWrapper, int, int))}).
+     * The method {@code ExtensionPopupMenu#prepareShow()} is deprecated but it must still be called
+     * for backward compatibility, so to avoid hiding future deprecations of other methods/classes
+     * this method was added to suppress the deprecation warning locally (instead of the whole
+     * method {@code showImpl(PopupMenuInvokerWrapper, int, int))}).
      *
      * @see ExtensionPopupMenu#prepareShow()
      */

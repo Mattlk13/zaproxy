@@ -20,8 +20,8 @@
 package org.zaproxy.zap;
 
 import java.io.FileNotFoundException;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.CommandLine;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.control.Control;
@@ -36,7 +36,7 @@ import org.parosproxy.paros.view.View;
  */
 class DaemonBootstrap extends HeadlessBootstrap {
 
-    private final Logger logger = Logger.getLogger(DaemonBootstrap.class);
+    private final Logger logger = LogManager.getLogger(DaemonBootstrap.class);
 
     public DaemonBootstrap(CommandLine cmdLineArgs) {
         super(cmdLineArgs);
@@ -51,9 +51,6 @@ class DaemonBootstrap extends HeadlessBootstrap {
 
         View.setDaemon(true); // Prevents the View ever being initialised
 
-        if (!getArgs().isNoStdOutLog()) {
-            BasicConfigurator.configure();
-        }
         logger.info(getStartingMessage());
 
         try {
@@ -108,6 +105,8 @@ class DaemonBootstrap extends HeadlessBootstrap {
                                 if (getArgs().isNoStdOutLog()) {
                                     System.out.println(message);
                                 }
+
+                                HeadlessBootstrap.checkForUpdates();
 
                                 // This is the only non-daemon thread, so should keep running
                                 // CoreAPI.handleApiAction uses System.exit to shutdown
